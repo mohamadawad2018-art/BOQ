@@ -1,0 +1,6 @@
+{
+  "name": "حصر الكميات الهندسي - BOQ",
+  "description": "تطبيق ويب تقدمي (PWA) يعمل بدون إنترنت بالكامل لمهندسي المساحة وحصر الكميات الميداني لإعداد جداول الكميات (BOQ) وتصدير تقارير Excel RTL لمشاريع تأهيل الأبنية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
