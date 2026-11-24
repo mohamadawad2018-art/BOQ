@@ -154,6 +154,8 @@ export interface Project {
   blocks: Block[];
   unitPrices: Record<string, number>;
   currency: string;
+  status?: 'active' | 'archived';
+  archivedAt?: string;
   updatedAt: string;
 }
 

@@ -75,7 +75,7 @@ export function createNewBlock(name = 'بناء جديد'): Block {
   };
 }
 
-export function createBlankProject(name = 'مشروع تأهيل جديد'): Project {
+export function createBlankProject(name = ''): Project {
   const today = new Date().toISOString().slice(0, 10);
   return {
     id: createId('prj'),
@@ -83,9 +83,10 @@ export function createBlankProject(name = 'مشروع تأهيل جديد'): Pro
     location: '',
     date: today,
     generalNotes: '',
-    blocks: [createNewBlock('الكتلة الرئيسية')],
+    blocks: [createNewBlock('البناء 1')],
     unitPrices: {},
     currency: 'USD',
+    status: 'active',
     updatedAt: new Date().toISOString(),
   };
 }
@@ -170,6 +171,7 @@ function createStarterWorkspace(): AppWorkspaceState {
     blocks: [block1],
     unitPrices: {},
     currency: 'USD',
+    status: 'active',
     updatedAt: new Date().toISOString(),
   };
 
