@@ -17,12 +17,23 @@ import {
 import { BlockCard } from './components/BlockCard';
 import { BOQSummaryView } from './components/BOQSummaryView';
 import { ConfirmModal } from './components/NumericInput';
+import {
+  AppPausedScreen,
+  OwnerControlBar,
+  OwnerLoginModal,
+} from './components/OwnerAccessControl';
 import { PricingView } from './components/PricingView';
 import { ProjectsRegistryView } from './components/ProjectsRegistryView';
 import { OfflineBanner, PWAInstallButton } from './components/PWAInstallButton';
 import { ResetProjectModal } from './components/ResetProjectModal';
 import { TrashDrawer } from './components/TrashDrawer';
 import { exportProjectToExcel } from './services/excelExportService';
+import {
+  type AppAccessState,
+  loadCachedAccessState,
+  subscribeToAccessControl,
+  subscribeToOwnerAuth,
+} from './services/firebaseService';
 import { createBlankProject, createNewBlock, storageService } from './services/storageService';
 import { AppWorkspaceState, Block, Floor, Project, Space, TrashItem } from './types/boq';
 import { createId } from './utils/calculations';
@@ -42,6 +53,9 @@ export default function App() {
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [ownerLoginOpen, setOwnerLoginOpen] = useState(false);
+  const [accessState, setAccessState] = useState<AppAccessState>(() => loadCachedAccessState());
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -52,11 +66,51 @@ export default function App() {
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const secretTapCountRef = useRef<number>(0);
+  const secretTapTimerRef = useRef<number | null>(null);
 
   // Instant 100% offline auto-save on every state change
   useEffect(() => {
     storageService.save(workspace);
   }, [workspace]);
+
+  // Subscribe to Firebase owner auth and global remote access control
+  useEffect(() => {
+    const unsubAuth = subscribeToOwnerAuth((_user, ownerFlag) => {
+      setIsOwner(ownerFlag);
+    });
+    const unsubAccess = subscribeToAccessControl((nextState) => {
+      setAccessState(nextState);
+    });
+
+    // Optional secret URL query (?owner=1) for quick activation on owner's device
+    if (typeof window !== 'undefined' && window.location.search.includes('owner=1')) {
+      setOwnerLoginOpen(true);
+    }
+
+    return () => {
+      unsubAuth();
+      unsubAccess();
+    };
+  }, []);
+
+  // Hidden 5-tap gesture on the app title (or lock icon) to open Owner Gate
+  const handleSecretOwnerTap = () => {
+    secretTapCountRef.current += 1;
+    if (secretTapTimerRef.current) {
+      window.clearTimeout(secretTapTimerRef.current);
+    }
+    if (secretTapCountRef.current >= 5) {
+      secretTapCountRef.current = 0;
+      if (!isOwner) {
+        setOwnerLoginOpen(true);
+      }
+      return;
+    }
+    secretTapTimerRef.current = window.setTimeout(() => {
+      secretTapCountRef.current = 0;
+    }, 2500);
+  };
 
   const showToast = (text: string, undoTrashItem?: TrashItem) => {
     if (toastTimerRef.current) {
@@ -533,19 +587,39 @@ export default function App() {
 
   const handleExportProjectExcel = (projectToExport: Project) => {
     exportProjectToExcel(projectToExport);
-    showToast(`تم تصدير ملف Excel للمشروع "${projectToExport.name || 'BOQ'}"`);
+    showToast(`تم تصدير ملف Excel المنسّق للمشروع "${projectToExport.name || 'BOQ'}"`);
   };
+
+  // Enforce real-time remote pause for all non-owner users holding the shared link
+  if (!accessState.isActive && !isOwner) {
+    return (
+      <>
+        <AppPausedScreen
+          message={accessState.pauseMessage}
+          onSecretOwnerTrigger={handleSecretOwnerTap}
+        />
+        <OwnerLoginModal
+          open={ownerLoginOpen}
+          onClose={() => setOwnerLoginOpen(false)}
+          onSuccess={() => showToast('تم تفعيل لوحة تحكم المالك على جهازك')}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 pb-24 md:pb-12">
       {/* 3-Zone Top Bar Contract */}
       <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#0b0f19]/92 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 sm:gap-8 px-4 sm:px-6">
-          {/* Zone 1: Single-element wordmark */}
+          {/* Zone 1: Single-element wordmark (5 rapid taps reveals hidden Owner Gate) */}
           <button
             type="button"
-            onClick={() => setActiveTab('survey')}
-            className="text-base sm:text-lg font-bold tracking-tight text-slate-100 whitespace-nowrap shrink-0"
+            onClick={() => {
+              setActiveTab('survey');
+              handleSecretOwnerTap();
+            }}
+            className="text-base sm:text-lg font-bold tracking-tight text-slate-100 whitespace-nowrap shrink-0 select-none"
           >
             حصر الكميات
           </button>
@@ -621,6 +695,14 @@ export default function App() {
 
       {/* Main Content Container */}
       <main className="mx-auto max-w-7xl px-3.5 sm:px-6 pt-4 sm:pt-5 space-y-5">
+        {/* Owner-Only Remote ON/OFF Control Panel (strictly invisible to non-owners) */}
+        {isOwner && (
+          <OwnerControlBar
+            accessState={accessState}
+            onStatusChanged={(msg) => showToast(msg)}
+          />
+        )}
+
         {/* Mobile & Desktop Quick Control Bar (Projects Registry, Reset/New, Backups, Install) */}
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -963,6 +1045,13 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* Hidden Owner Login Modal */}
+      <OwnerLoginModal
+        open={ownerLoginOpen}
+        onClose={() => setOwnerLoginOpen(false)}
+        onSuccess={() => showToast('تم تفعيل لوحة تحكم المالك على جهازك بنجاح')}
+      />
 
       {/* Non-intrusive Offline Indicator */}
       <OfflineBanner />

@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "AccessControl": {
+      "title": "AccessControl",
+      "description": "Global application availability switch controlled exclusively by the verified application owner.",
+      "type": "object",
+      "properties": {
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether the shared application is currently active for all users."
+        },
+        "pauseMessage": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Arabic message displayed to shared-link users when the application is paused."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the verified owner who last updated the switch."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last status change."
+        }
+      },
+      "required": ["isActive", "pauseMessage", "updatedBy", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/app_config/{docId}": {
+      "schema": { "$ref": "#/entities/AccessControl" },
+      "description": "Single-document global access control state (/app_config/access_control). Public get for real-time lock enforcement; strictly owner-only create/update."
+    }
+  }
+}

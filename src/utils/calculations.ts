@@ -57,7 +57,7 @@ export const SPACE_TYPE_META: Record<
   },
   bathrooms: {
     label: 'حمامات / خلاءات',
-    shortDesc: 'بلاطات 60*60 + أرضيات + سيراميك جدران (1-6 فراغات)',
+    shortDesc: 'أبعاد الفراغ الكامل + فراغات فرعية (ارتفاع افتراضي 2م و 1×1 تلقائي)',
   },
   buffet_kitchen: {
     label: 'بوفيه / مطبخ',
@@ -198,6 +198,92 @@ export function createEmptyDemolition(): DemolitionEntry {
   };
 }
 
+export interface ResolvedSubRoom {
+  id: string;
+  label: string;
+  length: number;
+  width: number;
+  height: number;
+  wallArea: number;
+  floorArea: number;
+  lengthSource: 'entered' | 'inherited' | 'default';
+  widthSource: 'entered' | 'inherited' | 'default';
+  heightSource: 'entered' | 'inherited' | 'default';
+}
+
+/**
+ * Resolves effective dimensions for bathroom sub-rooms:
+ * - Default sub-room height is 2.0m (editable per sub-room).
+ * - If a sub-room's L or W is left empty (0):
+ *     - If Sub-room 1 has L/W entered, subsequent blank sub-rooms automatically inherit Sub-room 1's dimensions.
+ *     - Otherwise (if forgot to enter any dimensions), automatically assumes 1m x 1m.
+ */
+export function resolveEffectiveSubRooms(subRooms: SubRoom[]): ResolvedSubRoom[] {
+  if (!subRooms || subRooms.length === 0) return [];
+  const first = subRooms[0];
+  const firstL = safeNum(first.length);
+  const firstW = safeNum(first.width);
+  const firstH = safeNum(first.height);
+
+  return subRooms.map((sr, idx) => {
+    const rawL = safeNum(sr.length);
+    const rawW = safeNum(sr.width);
+    const rawH = safeNum(sr.height);
+
+    let effL: number;
+    let lengthSource: 'entered' | 'inherited' | 'default';
+    if (rawL > 0) {
+      effL = rawL;
+      lengthSource = 'entered';
+    } else if (idx > 0 && firstL > 0) {
+      effL = firstL;
+      lengthSource = 'inherited';
+    } else {
+      effL = 1;
+      lengthSource = 'default';
+    }
+
+    let effW: number;
+    let widthSource: 'entered' | 'inherited' | 'default';
+    if (rawW > 0) {
+      effW = rawW;
+      widthSource = 'entered';
+    } else if (idx > 0 && firstW > 0) {
+      effW = firstW;
+      widthSource = 'inherited';
+    } else {
+      effW = 1;
+      widthSource = 'default';
+    }
+
+    let effH: number;
+    let heightSource: 'entered' | 'inherited' | 'default';
+    if (rawH > 0) {
+      effH = rawH;
+      heightSource = 'entered';
+    } else if (idx > 0 && firstH > 0) {
+      effH = firstH;
+      heightSource = 'inherited';
+    } else {
+      effH = 2;
+      heightSource = 'default';
+    }
+
+    return {
+      id: sr.id,
+      label: sr.label || `فراغ فرعي ${idx + 1}`,
+      length: effL,
+      width: effW,
+      height: effH,
+      floorArea: effL * effW,
+      wallArea: 2 * (effL + effW) * effH,
+      lengthSource,
+      widthSource,
+      heightSource,
+    };
+  });
+}
+
 export function applySpaceTypePreset(space: Space, nextType: SpaceType): Space {
   const base: Space = { ...space, spaceType: nextType };
   if (nextType === 'office_dorm') {
@@ -214,9 +300,10 @@ export function applySpaceTypePreset(space: Space, nextType: SpaceType): Space {
     const subRooms: SubRoom[] =
       base.subRooms.length > 0
         ? base.subRooms
-        : [{ id: createId('sub'), label: 'فراغ 1', length: 2.2, width: 1.8, height: 3 }];
+        : [{ id: createId('sub'), label: 'فراغ فرعي 1', length: 0, width: 0, height: 2 }];
     return {
       ...base,
+      height: base.height || 3,
       subRooms,
       floorGrinding: false,
       floorCeramic: true,
@@ -299,24 +386,28 @@ export function calculateSpace(space: Space): SpaceCalculationResult {
   const boq = createEmptyBOQ();
 
   // 1. Floor & Gross Wall Area
-  let singleFloorArea = 0;
-  let singleGrossWallArea = 0;
+  const mainL = safeNum(space.length);
+  const mainW = safeNum(space.width);
+  const mainH = safeNum(space.height);
 
-  if (space.spaceType === 'bathrooms' && space.subRooms.length > 0) {
-    for (const sub of space.subRooms) {
-      const l = safeNum(sub.length);
-      const w = safeNum(sub.width);
-      const h = safeNum(sub.height);
-      singleFloorArea += l * w;
-      singleGrossWallArea += 2 * (l + w) * h;
+  let singleFloorArea = mainL * mainW;
+  let singleMainWallArea = 2 * (mainL + mainW) * mainH;
+  let singleSubRoomsWallArea = 0;
+
+  if (space.spaceType === 'bathrooms') {
+    const resolvedSubs = resolveEffectiveSubRooms(space.subRooms);
+    let subFloorSum = 0;
+    for (const sub of resolvedSubs) {
+      subFloorSum += sub.floorArea;
+      singleSubRoomsWallArea += sub.wallArea;
     }
-  } else {
-    const l = safeNum(space.length);
-    const w = safeNum(space.width);
-    const h = safeNum(space.height);
-    singleFloorArea = l * w;
-    singleGrossWallArea = 2 * (l + w) * h;
+    // Main room floor covers the whole bathroom hall; fallback to sub-rooms sum only if main L/W left 0
+    if (singleFloorArea <= 0 && subFloorSum > 0) {
+      singleFloorArea = subFloorSum;
+    }
   }
+
+  const singleGrossWallArea = singleMainWallArea + singleSubRoomsWallArea;
 
   // 2. Openings (Doors + Windows) & Auto-Deduction
   let singleDoorsArea = 0;
@@ -348,6 +439,11 @@ export function calculateSpace(space: Space): SpaceCalculationResult {
       case 'maint_double':
         boq.doorsMaintDouble += n * mult;
         break;
+    }
+
+    // حمايات أبواب (Door iron security grille: W * H * N * 16 kg)
+    if (d.hasIronGrille) {
+      boq.ironGrilles += area * 16 * mult;
     }
   }
 
@@ -470,6 +566,8 @@ export function calculateSpace(space: Space): SpaceCalculationResult {
 
   return {
     singleFloorArea,
+    singleMainWallArea,
+    singleSubRoomsWallArea,
     singleGrossWallArea,
     singleOpeningsArea,
     singleDoorsArea,

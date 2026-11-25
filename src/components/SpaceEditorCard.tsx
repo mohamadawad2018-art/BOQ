@@ -28,6 +28,7 @@ import {
   createId,
   DOOR_TYPE_LABELS,
   formatNum,
+  resolveEffectiveSubRooms,
   safeNum,
   SPACE_TYPE_META,
   STANDARD_BOQ_COLUMNS,
@@ -99,6 +100,8 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
 
   const calc = calculateSpace(space);
   const mult = calc.multiplier;
+  const resolvedSubRooms =
+    space.spaceType === 'bathrooms' ? resolveEffectiveSubRooms(space.subRooms) : [];
 
   const update = (patch: Partial<Space>) => {
     onChange({ ...space, ...patch });
@@ -108,16 +111,29 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
     onChange(applySpaceTypePreset(space, nextType));
   };
 
-  // Sub-rooms (1 to 6) for bathrooms
+  // Sub-rooms (0 to 6) for bathrooms
+  const setSubRoomsCount = (count: number) => {
+    const safeCount = Math.max(0, Math.min(6, Math.floor(count)));
+    if (safeCount === space.subRooms.length) return;
+    if (safeCount < space.subRooms.length) {
+      update({ subRooms: space.subRooms.slice(0, safeCount) });
+      return;
+    }
+    const next = [...space.subRooms];
+    for (let i = space.subRooms.length + 1; i <= safeCount; i++) {
+      next.push({
+        id: createId('sub'),
+        label: `فراغ فرعي ${i}`,
+        length: 0,
+        width: 0,
+        height: 2,
+      });
+    }
+    update({ subRooms: next });
+  };
+
   const addSubRoom = () => {
-    if (space.subRooms.length >= 6) return;
-    const idx = space.subRooms.length + 1;
-    update({
-      subRooms: [
-        ...space.subRooms,
-        { id: createId('sub'), label: `فراغ ${idx}`, length: 0, width: 0, height: 3 },
-      ],
-    });
+    setSubRoomsCount(space.subRooms.length + 1);
   };
 
   const updateSubRoom = (
@@ -130,7 +146,6 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
   };
 
   const removeSubRoom = (id: string) => {
-    if (space.subRooms.length <= 1) return;
     update({ subRooms: space.subRooms.filter((sr) => sr.id !== id) });
   };
 
@@ -142,6 +157,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
       width: space.spaceType === 'bathrooms' ? 0.8 : 1.0,
       height: 2.1,
       count: 1,
+      hasIronGrille: false,
     };
     update({ doors: [...space.doors, entry] });
   };
@@ -364,180 +380,273 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
             </div>
           </div>
 
-          {/* 3. Dimensions (Standard vs Bathrooms Multi-Sub-Room vs Staircase Calculator) */}
-          {space.spaceType === 'bathrooms' ? (
-            <div className="rounded-xl bg-[#0b0f19]/75 border border-slate-800 p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
+          {/* 3. Dimensions (Main Space First for ALL Types + Bathroom Sub-Rooms + Staircase Calculator) */}
+          <div className="space-y-4">
+            {space.spaceType === 'staircase' && (
+              <div className="rounded-xl bg-[#0b0f19]/80 border border-cyan-500/35 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h5 className="text-sm font-semibold text-cyan-300">
-                    أبعاد الفراغات الفرعية للحمامات / الخلاءات ({space.subRooms.length} / 6)
+                    حاسبة بيت الدرج (قائمة + نائمة + الاستراحة)
                   </h5>
-                  <p className="text-xs text-slate-400">
-                    تُجمع الأرضيات والجدران والأسقف تلقائياً في سطر موحد بالجدول وملف Excel
-                  </p>
+                  <span className="font-num text-xs text-slate-400">
+                    Steps × [(L × 0.30) + (L × 0.15)]
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  disabled={space.subRooms.length >= 6}
-                  onClick={addSubRoom}
-                  className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-40 transition-colors whitespace-nowrap"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>إضافة فراغ فرعي</span>
-                </button>
-              </div>
-
-              <div className="space-y-2.5">
-                {space.subRooms.map((sr, idx) => {
-                  const srFloor = safeNum(sr.length) * safeNum(sr.width);
-                  const srWall = 2 * (safeNum(sr.length) + safeNum(sr.width)) * safeNum(sr.height);
-                  return (
-                    <div
-                      key={sr.id}
-                      className="grid grid-cols-2 sm:grid-cols-12 gap-2.5 items-end pb-2.5 border-b border-slate-800/70 last:border-b-0 last:pb-0"
-                    >
-                      <div className="col-span-2 sm:col-span-3 flex flex-col gap-1">
-                        <label className="text-[11px] text-slate-400">تسمية الفراغ الفرعي</label>
-                        <input
-                          type="text"
-                          value={sr.label}
-                          onChange={(e) => updateSubRoom(sr.id, { label: e.target.value })}
-                          placeholder={`فراغ ${idx + 1}`}
-                          className="w-full min-h-[44px] rounded-xl bg-[#111827] border border-slate-700/80 px-3 text-sm text-slate-100 outline-none focus:border-cyan-400/70"
-                        />
-                      </div>
-                      <NumericInput
-                        label="الطول (L)"
-                        value={sr.length}
-                        onChange={(v) => updateSubRoom(sr.id, { length: v })}
-                        unit="م"
-                        accent="cyan"
-                        className="sm:col-span-2"
-                      />
-                      <NumericInput
-                        label="العرض (W)"
-                        value={sr.width}
-                        onChange={(v) => updateSubRoom(sr.id, { width: v })}
-                        unit="م"
-                        accent="cyan"
-                        className="sm:col-span-2"
-                      />
-                      <NumericInput
-                        label="الارتفاع (H)"
-                        value={sr.height}
-                        onChange={(v) => updateSubRoom(sr.id, { height: v })}
-                        unit="م"
-                        accent="cyan"
-                        className="sm:col-span-2"
-                      />
-                      <div className="col-span-1 sm:col-span-2 flex flex-col justify-center min-h-[44px] px-2 text-xs text-slate-400">
-                        <span>
-                          أرضية: <strong className="font-num text-slate-200">{formatNum(srFloor)}</strong>
-                        </span>
-                        <span>
-                          جدران: <strong className="font-num text-slate-200">{formatNum(srWall)}</strong>
-                        </span>
-                      </div>
-                      <div className="col-span-1 sm:col-span-1 flex justify-end">
-                        <button
-                          type="button"
-                          disabled={space.subRooms.length <= 1}
-                          onClick={() => removeSubRoom(sr.id)}
-                          className="flex h-[44px] w-[44px] items-center justify-center rounded-xl border border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 disabled:opacity-30 transition-colors"
-                          aria-label="حذف الفراغ الفرعي"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {space.spaceType === 'staircase' && (
-                <div className="rounded-xl bg-[#0b0f19]/80 border border-cyan-500/35 p-4 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h5 className="text-sm font-semibold text-cyan-300">
-                      حاسبة بيت الدرج (قائمة + نائمة + الاستراحة)
-                    </h5>
-                    <span className="font-num text-xs text-slate-400">
-                      Steps × [(L × 0.30) + (L × 0.15)]
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+                  <NumericInput
+                    label="عدد الدرجات"
+                    value={space.stairStepsCount}
+                    onChange={(v) => update({ stairStepsCount: v })}
+                    unit="درجة"
+                    accent="cyan"
+                  />
+                  <NumericInput
+                    label="طول الدرجة (L)"
+                    value={space.stairStepLength}
+                    onChange={(v) => update({ stairStepLength: v })}
+                    unit="م"
+                    accent="cyan"
+                  />
+                  <div className="flex flex-col justify-center min-h-[44px] rounded-xl bg-[#111827] border border-slate-800 px-3 py-1.5">
+                    <span className="text-[11px] text-slate-500">قائمة + نائمة</span>
+                    <span className="font-num text-sm font-semibold text-emerald-400">
+                      {formatNum(calc.boq.stairSteps)} م²
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 items-end">
-                    <NumericInput
-                      label="عدد الدرجات"
-                      value={space.stairStepsCount}
-                      onChange={(v) => update({ stairStepsCount: v })}
-                      unit="درجة"
-                      accent="cyan"
-                    />
-                    <NumericInput
-                      label="طول الدرجة (L)"
-                      value={space.stairStepLength}
-                      onChange={(v) => update({ stairStepLength: v })}
-                      unit="م"
-                      accent="cyan"
-                    />
-                    <div className="flex flex-col justify-center min-h-[44px] rounded-xl bg-[#111827] border border-slate-800 px-3 py-1.5">
-                      <span className="text-[11px] text-slate-500">قائمة + نائمة</span>
-                      <span className="font-num text-sm font-semibold text-emerald-400">
-                        {formatNum(calc.boq.stairSteps)} م²
-                      </span>
-                    </div>
-                    <NumericInput
-                      label="طول الاستراحة"
-                      value={space.landingLength}
-                      onChange={(v) => update({ landingLength: v })}
-                      unit="م"
-                      accent="cyan"
-                    />
-                    <NumericInput
-                      label="عرض الاستراحة"
-                      value={space.landingWidth}
-                      onChange={(v) => update({ landingWidth: v })}
-                      unit="م"
-                      accent="cyan"
-                    />
-                    <div className="flex flex-col justify-center min-h-[44px] rounded-xl bg-[#111827] border border-slate-800 px-3 py-1.5">
-                      <span className="text-[11px] text-slate-500">استراحة الدرج</span>
-                      <span className="font-num text-sm font-semibold text-cyan-300">
-                        {formatNum(calc.boq.stairLanding)} م²
-                      </span>
-                    </div>
+                  <NumericInput
+                    label="طول الاستراحة"
+                    value={space.landingLength}
+                    onChange={(v) => update({ landingLength: v })}
+                    unit="م"
+                    accent="cyan"
+                  />
+                  <NumericInput
+                    label="عرض الاستراحة"
+                    value={space.landingWidth}
+                    onChange={(v) => update({ landingWidth: v })}
+                    unit="م"
+                    accent="cyan"
+                  />
+                  <div className="flex flex-col justify-center min-h-[44px] rounded-xl bg-[#111827] border border-slate-800 px-3 py-1.5">
+                    <span className="text-[11px] text-slate-500">استراحة الدرج</span>
+                    <span className="font-num text-sm font-semibold text-cyan-300">
+                      {formatNum(calc.boq.stairLanding)} م²
+                    </span>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
+            {/* Main Room Dimensions (ALWAYS shown first, including Bathrooms / WCs) */}
+            <div className="space-y-2">
+              {space.spaceType === 'bathrooms' && (
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-xs font-semibold text-emerald-300">
+                    أبعاد الفراغ الكامل (الحمام / الخلاءات الرئيسية)
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    تُحسب الأرضية والسقف والجدران الخارجية على هذه الأبعاد
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-3">
                 <NumericInput
-                  label={space.spaceType === 'staircase' ? 'طول بيت الدرج (L)' : 'الطول (L)'}
+                  label={
+                    space.spaceType === 'staircase'
+                      ? 'طول بيت الدرج (L)'
+                      : space.spaceType === 'bathrooms'
+                      ? 'طول الفراغ الكامل (L)'
+                      : 'الطول (L)'
+                  }
                   value={space.length}
                   onChange={(v) => update({ length: v })}
                   unit="م"
                 />
                 <NumericInput
-                  label={space.spaceType === 'staircase' ? 'عرض بيت الدرج (W)' : 'العرض (W)'}
+                  label={
+                    space.spaceType === 'staircase'
+                      ? 'عرض بيت الدرج (W)'
+                      : space.spaceType === 'bathrooms'
+                      ? 'عرض الفراغ الكامل (W)'
+                      : 'العرض (W)'
+                  }
                   value={space.width}
                   onChange={(v) => update({ width: v })}
                   unit="م"
                 />
                 <NumericInput
-                  label="الارتفاع (H)"
+                  label={
+                    space.spaceType === 'bathrooms' ? 'ارتفاع الفراغ الكامل (H)' : 'الارتفاع (H)'
+                  }
                   value={space.height}
                   onChange={(v) => update({ height: v })}
                   unit="م"
                 />
               </div>
             </div>
-          )}
+
+            {/* Sub-Rooms Section specifically for Bathrooms / WCs */}
+            {space.spaceType === 'bathrooms' && (
+              <div className="rounded-xl bg-[#0b0f19]/75 border border-cyan-500/30 p-4 space-y-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-sm font-semibold text-cyan-300">
+                      الفراغات الفرعية داخل الحمام / الخلاءات
+                    </h5>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      الارتفاع الافتراضي 2 م (قابل للتعديل). ترك الأبعاد فارغة يأخذ أبعاد الفراغ
+                      الفرعي 1 تلقائياً أو 1×1 م افتراضياً.
+                    </p>
+                  </div>
+
+                  {/* Quick Count Selector (0..6) */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-400 whitespace-nowrap">
+                      عدد الفراغات الفرعية:
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {[0, 1, 2, 3, 4, 5, 6].map((cnt) => {
+                        const active = space.subRooms.length === cnt;
+                        return (
+                          <button
+                            key={cnt}
+                            type="button"
+                            onClick={() => setSubRoomsCount(cnt)}
+                            className={`font-num min-h-[38px] min-w-[38px] px-2 rounded-lg border text-xs font-bold transition-colors ${
+                              active
+                                ? 'bg-cyan-500/20 border-cyan-400/70 text-cyan-200'
+                                : 'bg-[#111827] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                            }`}
+                          >
+                            {cnt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {space.subRooms.length === 0 ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-slate-800 px-3.5 py-3 text-xs text-slate-400">
+                    <span>لا توجد فراغات فرعية مضافة — يتم الحساب على الفراغ الرئيسي فقط.</span>
+                    <button
+                      type="button"
+                      onClick={addSubRoom}
+                      className="inline-flex items-center gap-1.5 font-semibold text-cyan-300 hover:text-cyan-200"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>إضافة فراغ فرعي</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {space.subRooms.map((sr, idx) => {
+                      const resolved = resolvedSubRooms[idx];
+                      const isInherited =
+                        resolved &&
+                        (resolved.lengthSource === 'inherited' ||
+                          resolved.widthSource === 'inherited');
+                      const isDefault =
+                        resolved &&
+                        !isInherited &&
+                        (resolved.lengthSource === 'default' ||
+                          resolved.widthSource === 'default');
+
+                      return (
+                        <div
+                          key={sr.id}
+                          className="rounded-xl bg-[#111827]/70 border border-slate-800/80 p-3 space-y-2"
+                        >
+                          <div className="grid grid-cols-2 sm:grid-cols-12 gap-2.5 items-end">
+                            <div className="col-span-2 sm:col-span-3 flex flex-col gap-1">
+                              <label className="text-[11px] text-slate-400">
+                                تسمية الفراغ الفرعي {idx + 1}
+                              </label>
+                              <input
+                                type="text"
+                                value={sr.label}
+                                onChange={(e) => updateSubRoom(sr.id, { label: e.target.value })}
+                                placeholder={`فراغ فرعي ${idx + 1}`}
+                                className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3 text-sm text-slate-100 outline-none focus:border-cyan-400/70"
+                              />
+                            </div>
+                            <NumericInput
+                              label="الطول (L)"
+                              value={sr.length}
+                              placeholder={resolved ? String(resolved.length) : '1'}
+                              onChange={(v) => updateSubRoom(sr.id, { length: v })}
+                              unit="م"
+                              accent="cyan"
+                              className="sm:col-span-2"
+                            />
+                            <NumericInput
+                              label="العرض (W)"
+                              value={sr.width}
+                              placeholder={resolved ? String(resolved.width) : '1'}
+                              onChange={(v) => updateSubRoom(sr.id, { width: v })}
+                              unit="م"
+                              accent="cyan"
+                              className="sm:col-span-2"
+                            />
+                            <NumericInput
+                              label="الارتفاع (H)"
+                              value={sr.height}
+                              placeholder={resolved ? String(resolved.height) : '2'}
+                              onChange={(v) => updateSubRoom(sr.id, { height: v })}
+                              unit="م"
+                              accent="cyan"
+                              className="sm:col-span-2"
+                            />
+                            <div className="col-span-1 sm:col-span-2 flex flex-col justify-center min-h-[44px] px-1.5 text-xs text-slate-400">
+                              <span>
+                                جدران:{' '}
+                                <strong className="font-num text-cyan-300">
+                                  {formatNum(resolved?.wallArea || 0)}
+                                </strong>{' '}
+                                م²
+                              </span>
+                              <span className="font-num text-[11px] text-slate-500">
+                                {resolved
+                                  ? `${formatNum(resolved.length)}×${formatNum(resolved.width)}×${formatNum(resolved.height)}م`
+                                  : ''}
+                              </span>
+                            </div>
+                            <div className="col-span-1 sm:col-span-1 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => removeSubRoom(sr.id)}
+                                className="flex h-[44px] w-[44px] items-center justify-center rounded-xl border border-slate-800 bg-[#0b0f19] text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition-colors"
+                                aria-label="حذف الفراغ الفرعي"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {(isInherited || isDefault) && resolved && (
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-0.5">
+                              <span className={isInherited ? 'text-cyan-400' : 'text-amber-400'}>
+                                {isInherited
+                                  ? `مطابق تلقائياً لأبعاد الفراغ الفرعي 1 (${formatNum(resolved.length)}×${formatNum(resolved.width)}×${formatNum(resolved.height)} م)`
+                                  : `تم اعتماد الأبعاد الافتراضية تلقائياً (${formatNum(resolved.length)}×${formatNum(resolved.width)}×${formatNum(resolved.height)} م)`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Live Geometry Summary Strip */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-[#0b0f19] border border-slate-800/90 px-4 py-3 text-xs">
             <div>
-              <span className="text-slate-400">مساحة الأرضية: </span>
+              <span className="text-slate-400">
+                {space.spaceType === 'bathrooms' ? 'أرضية / سقف: ' : 'مساحة الأرضية: '}
+              </span>
               <span className="font-num font-semibold text-emerald-400">
                 {formatNum(calc.singleFloorArea)}
               </span>
@@ -546,13 +655,35 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
             <span className="text-slate-700" aria-hidden="true">
               /
             </span>
-            <div>
-              <span className="text-slate-400">إجمالي الجدران: </span>
-              <span className="font-num font-semibold text-slate-200">
-                {formatNum(calc.singleGrossWallArea)}
-              </span>
-              <span className="text-slate-500"> م²</span>
-            </div>
+            {space.spaceType === 'bathrooms' && calc.singleSubRoomsWallArea > 0 ? (
+              <>
+                <div>
+                  <span className="text-slate-400">جدران الفراغ الرئيسي: </span>
+                  <span className="font-num font-semibold text-slate-200">
+                    {formatNum(calc.singleMainWallArea)}
+                  </span>
+                  <span className="text-slate-500"> م²</span>
+                </div>
+                <span className="text-slate-700" aria-hidden="true">
+                  /
+                </span>
+                <div>
+                  <span className="text-slate-400">جدران الفراغات الفرعية: </span>
+                  <span className="font-num font-semibold text-cyan-300">
+                    +{formatNum(calc.singleSubRoomsWallArea)}
+                  </span>
+                  <span className="text-slate-500"> م²</span>
+                </div>
+              </>
+            ) : (
+              <div>
+                <span className="text-slate-400">إجمالي الجدران: </span>
+                <span className="font-num font-semibold text-slate-200">
+                  {formatNum(calc.singleGrossWallArea)}
+                </span>
+                <span className="text-slate-500"> م²</span>
+              </div>
+            )}
             <span className="text-slate-700" aria-hidden="true">
               /
             </span>
@@ -713,6 +844,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                 <div className="space-y-2.5">
                   {space.doors.map((d) => {
                     const area = safeNum(d.width) * safeNum(d.height) * safeNum(d.count);
+                    const grilleKg = area * 16 * mult;
                     const resultVal =
                       d.type === 'iron_single' || d.type === 'iron_double'
                         ? `${formatNum(area * 40 * mult)} كغ`
@@ -767,6 +899,27 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                             onChange={(v) => updateDoor(d.id, { count: v })}
                           />
                         </div>
+
+                        {/* Door Iron Security Grille Toggle */}
+                        <div className="pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateDoor(d.id, { hasIronGrille: !d.hasIronGrille })
+                            }
+                            className={`flex w-full items-center justify-between min-h-[40px] px-3 rounded-xl border text-xs font-semibold transition-colors ${
+                              d.hasIronGrille
+                                ? 'bg-cyan-500/15 border-cyan-400/60 text-cyan-300'
+                                : 'bg-[#111827] border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <span>حماية حديد للباب</span>
+                            <span className="font-num text-[11px]">
+                              {d.hasIronGrille ? `+${formatNum(grilleKg)} كغ` : '×16 كغ'}
+                            </span>
+                          </button>
+                        </div>
+
                         <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                           <span>
                             خصم جدران:{' '}
@@ -775,7 +928,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                             </strong>
                           </span>
                           <span>
-                            الناتج:{' '}
+                            الباب:{' '}
                             <strong className="font-num text-emerald-400">{resultVal}</strong>
                           </span>
                         </div>

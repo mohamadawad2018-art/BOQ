@@ -40,6 +40,7 @@ export interface DoorEntry {
   width: number;
   height: number;
   count: number;
+  hasIronGrille?: boolean;
 }
 
 export interface WindowEntry {
@@ -214,6 +215,8 @@ export interface BOQQuantities {
 
 export interface SpaceCalculationResult {
   singleFloorArea: number;
+  singleMainWallArea: number;
+  singleSubRoomsWallArea: number;
   singleGrossWallArea: number;
   singleOpeningsArea: number;
   singleDoorsArea: number;

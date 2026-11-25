@@ -116,10 +116,13 @@ function createStarterWorkspace(): AppWorkspaceState {
   officeSpace.extraPlaster = 4.5;
 
   const bathSpace = createNewSpace('مجموعة حمامات الطابق الأرضي', 'bathrooms');
+  bathSpace.length = 5.0;
+  bathSpace.width = 3.2;
+  bathSpace.height = 3.0;
   bathSpace.subRooms = [
-    { id: createId('sub'), label: 'فراغ 1 (مغاسل)', length: 3.0, width: 2.0, height: 3.0 },
-    { id: createId('sub'), label: 'فراغ 2 (خلاء 1)', length: 1.6, width: 1.2, height: 3.0 },
-    { id: createId('sub'), label: 'فراغ 3 (خلاء 2)', length: 1.6, width: 1.2, height: 3.0 },
+    { id: createId('sub'), label: 'خلاء 1', length: 1.5, width: 1.2, height: 2.0 },
+    { id: createId('sub'), label: 'خلاء 2', length: 0, width: 0, height: 2.0 },
+    { id: createId('sub'), label: 'خلاء 3', length: 0, width: 0, height: 2.0 },
   ];
   bathSpace.doors = [
     { id: createId('dr'), type: 'aluminum', width: 0.8, height: 2.0, count: 3 },

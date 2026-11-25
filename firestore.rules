@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwnerAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'mohamad.awad.2018@gmail.com';
+    }
+
+    function isValidAccessControl(data) {
+      return data.keys().hasAll(['isActive', 'pauseMessage', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['isActive', 'pauseMessage', 'updatedBy', 'updatedAt'])
+        && data.isActive is bool
+        && data.pauseMessage is string
+        && data.pauseMessage.size() <= 300
+        && data.updatedBy is string
+        && data.updatedBy == request.auth.uid
+        && isValidId(data.updatedBy)
+        && data.updatedAt is timestamp;
+    }
+
+    // Single-document remote access control (/app_config/access_control)
+    match /app_config/{docId} {
+      allow get: if isValidId(docId) && docId == 'access_control';
+      allow list: if false;
+
+      allow create: if isOwnerAdmin()
+        && isValidId(docId)
+        && docId == 'access_control'
+        && isValidAccessControl(incoming())
+        && incoming().updatedAt == request.time;
+
+      allow update: if isOwnerAdmin()
+        && isValidId(docId)
+        && docId == 'access_control'
+        && isValidAccessControl(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'pauseMessage', 'updatedBy', 'updatedAt'])
+        && incoming().updatedAt == request.time;
+
+      allow delete: if false;
+    }
+  }
+}
