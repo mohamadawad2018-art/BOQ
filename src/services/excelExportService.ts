@@ -4,6 +4,7 @@ import {
   calculateBlockGeneralWorks,
   calculateSpace,
   collectProjectCustomColumns,
+  isBathroomSpaceType,
   resolveEffectiveSubRooms,
   round2,
   safeNum,
@@ -292,10 +293,9 @@ export function exportProjectToExcel(project: Project): void {
 
         const calc = calculateSpace(space);
         const multSuffix = calc.multiplier > 1 ? ` (×${calc.multiplier})` : '';
-        const subSuffix =
-          space.spaceType === 'bathrooms'
-            ? `\n[${space.subRooms.length} فراغات فرعية]`
-            : '';
+        const subSuffix = isBathroomSpaceType(space.spaceType)
+          ? `\n[${space.subRooms.length} فراغات فرعية]`
+          : '';
         const spaceTitle = `${floor.name} - ${space.name}${multSuffix}${subSuffix}`;
 
         const row: StyledCell[] = [
@@ -320,7 +320,7 @@ export function exportProjectToExcel(project: Project): void {
         if (calc.multiplier > 1) {
           noteParts.push(`عدد الفراغات المتماثلة: ${calc.multiplier}`);
         }
-        if (space.spaceType === 'bathrooms' && space.subRooms.length > 0) {
+        if (isBathroomSpaceType(space.spaceType) && space.subRooms.length > 0) {
           const resolved = resolveEffectiveSubRooms(space.subRooms);
           const dimsStr = resolved
             .map((sr) => `${sr.label}: ${sr.length}×${sr.width}×${sr.height}م`)

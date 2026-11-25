@@ -60,7 +60,7 @@ export function createNewBlock(name = 'بناء جديد'): Block {
       },
     ],
     generalWorks: {
-      roofWaterproofingMode: 'auto',
+      roofWaterproofingMode: 'none',
       roofWaterproofingManual: 0,
       roofTilesArea: 0,
       tyroleanMode: 'facades',
@@ -100,7 +100,7 @@ function createStarterWorkspace(): AppWorkspaceState {
   officeSpace.multiplier = 2;
   officeSpace.note = 'غرفتان متماثلتان في الجناح الشرقي';
   officeSpace.doors = [
-    { id: createId('dr'), type: 'wood', width: 1.0, height: 2.1, count: 1 },
+    { id: createId('dr'), type: 'wood', width: 1.0, height: 2.0, count: 1 },
   ];
   officeSpace.windows = [
     {
@@ -160,6 +160,7 @@ function createStarterWorkspace(): AppWorkspaceState {
       spaces: [officeSpace, bathSpace],
     },
   ];
+  block1.generalWorks.roofWaterproofingMode = 'auto';
   block1.generalWorks.facades = [
     { id: createId('fac'), label: 'الواجهة الأمامية', length: 18, height: 3.6 },
     { id: createId('fac'), label: 'الواجهة الجانبية', length: 12, height: 3.6 },

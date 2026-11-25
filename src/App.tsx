@@ -291,7 +291,19 @@ export default function App() {
       ...proj,
       blocks: proj.blocks.map((b) => (b.id === blockId ? { ...b, isClosed: true } : b)),
     }));
-    showToast('تم إغلاق وطي البناء — اضغط عليه في أي وقت للتعديل');
+    showToast('تم إغلاق وطي البناء — يمكنك فتح بناء جديد أو إغلاق المشروع لعرض الملخص الشامل');
+  };
+
+  const handleCloseProjectAndViewSummary = () => {
+    updateActiveProject((proj) => ({
+      ...proj,
+      blocks: proj.blocks.map((b) => ({ ...b, isClosed: true })),
+    }));
+    setActiveTab('summary');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast(
+      `تم إغلاق المشروع "${activeProject.name.trim() || 'الحالي'}" والانتقال إلى ملخص الكميات الإجمالي والتفصيلي`
+    );
   };
 
   const handleReopenBlock = (blockId: string) => {
@@ -885,9 +897,11 @@ export default function App() {
                     key={block.id}
                     block={block}
                     blockIndex={idx}
+                    projectName={activeProject.name}
                     onChange={handleUpdateBlock}
                     onFinishAndAddNew={() => handleFinishAndAddNewBlock(block.id)}
                     onCloseOnly={() => handleCloseBlockOnly(block.id)}
+                    onCloseProjectAndViewSummary={handleCloseProjectAndViewSummary}
                     onReopen={() => handleReopenBlock(block.id)}
                     onDuplicateBlock={() => handleDuplicateBlock(block)}
                     onRequestDeleteBlock={() => handleRequestDeleteBlock(block)}
@@ -897,6 +911,30 @@ export default function App() {
                     }
                   />
                 ))}
+
+                {/* Close Project & Navigate to Comprehensive Summary Card */}
+                <div className="rounded-2xl bg-[#111827] border border-cyan-500/35 p-5 flex flex-wrap items-center justify-between gap-4 shadow-[0_0_24px_-14px_rgba(6,182,212,0.35)]">
+                  <div className="space-y-1">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-100">
+                      انتهيت من مسح كتل المشروع؟
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      عند إغلاق المشروع سيتم طي كافة الأبنية والانتقال مباشرة إلى ملخص كميات المشروع
+                      الإجمالي والتفصيلي لكل كتلة وفراغ.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCloseProjectAndViewSummary}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 min-h-[48px] px-6 py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-sm font-bold text-white shadow-[0_0_22px_-6px_rgba(6,182,212,0.6)] transition-all active:scale-[0.99] whitespace-nowrap"
+                  >
+                    <Table2 className="h-4 w-4" />
+                    <span>
+                      إغلاق المشروع{activeProject.name.trim() ? `: ${activeProject.name.trim()}` : ''}{' '}
+                      وعرض الملخص الشامل
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

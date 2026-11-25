@@ -37,7 +37,9 @@ export const STANDARD_BOQ_COLUMNS: BOQColumnDef[] = [
   { key: 'tyrolean', label: 'رشة تيرولية', unit: 'م²', category: 'أعمال الكتلة العامة' },
   { key: 'doorsMaintDouble', label: 'صيانة أبواب درفتين', unit: 'عدد', category: 'الصيانة' },
   { key: 'doorsMaintSingle', label: 'صيانة أبواب درفة', unit: 'عدد', category: 'الصيانة' },
-  { key: 'windowsMaint', label: 'صيانة شبابيك', unit: 'عدد', category: 'الصيانة' },
+  { key: 'doorsMaintAluminum', label: 'صيانة أبواب ألمنيوم', unit: 'عدد', category: 'الصيانة' },
+  { key: 'windowsMaint', label: 'صيانة نوافذ ألمنيوم', unit: 'عدد', category: 'الصيانة' },
+  { key: 'windowsMaintIron', label: 'صيانة نوافذ حديد', unit: 'عدد', category: 'الصيانة' },
   { key: 'block20', label: 'بناء بلوك 20', unit: 'م²', category: 'البلوك والطينة والهدم' },
   { key: 'block15', label: 'بناء بلوك 15', unit: 'م²', category: 'البلوك والطينة والهدم' },
   { key: 'block10', label: 'بناء بلوك 10', unit: 'م²', category: 'البلوك والطينة والهدم' },
@@ -46,6 +48,10 @@ export const STANDARD_BOQ_COLUMNS: BOQColumnDef[] = [
   { key: 'stairSteps', label: 'قائمة + نائمة', unit: 'م²', category: 'الأرضيات والدرج' },
   { key: 'stairLanding', label: 'استراحة درج', unit: 'م²', category: 'الأرضيات والدرج' },
 ];
+
+export function isBathroomSpaceType(type: SpaceType): boolean {
+  return type === 'bathrooms' || type === 'prefab_bathrooms';
+}
 
 export const SPACE_TYPE_META: Record<
   SpaceType,
@@ -58,6 +64,14 @@ export const SPACE_TYPE_META: Record<
   bathrooms: {
     label: 'حمامات / خلاءات',
     shortDesc: 'أبعاد الفراغ الكامل + فراغات فرعية (ارتفاع افتراضي 2م و 1×1 تلقائي)',
+  },
+  prefab_dorm: {
+    label: 'مسبق صنع مهجع',
+    shortDesc: 'مسبق صنع — دهان جدران + دهان أسقف + جلي أرضيات (قابل للتعديل)',
+  },
+  prefab_bathrooms: {
+    label: 'مسبق صنع خلاءات',
+    shortDesc: 'يعامل كخلاءات: أبعاد الفراغ الكامل + فراغات فرعية (2م و 1×1 تلقائي)',
   },
   buffet_kitchen: {
     label: 'بوفيه / مطبخ',
@@ -84,12 +98,14 @@ export const DOOR_TYPE_LABELS: Record<string, { label: string; unit: string }> =
   iron_double: { label: 'أبواب حديد درفتين (×40)', unit: 'كغ' },
   maint_single: { label: 'صيانة أبواب درفة', unit: 'عدد' },
   maint_double: { label: 'صيانة أبواب درفتين', unit: 'عدد' },
+  maint_aluminum: { label: 'صيانة أبواب ألمنيوم', unit: 'عدد' },
 };
 
 export const WINDOW_TYPE_LABELS: Record<string, { label: string; unit: string }> = {
   aluminum: { label: 'نوافذ ألمنيوم (×1.3)', unit: 'م²' },
   iron: { label: 'نوافذ حديد (×16)', unit: 'كغ' },
-  maint: { label: 'صيانة شبابيك', unit: 'عدد' },
+  maint: { label: 'صيانة نوافذ ألمنيوم', unit: 'عدد' },
+  maint_iron: { label: 'صيانة نوافذ حديد', unit: 'عدد' },
 };
 
 export const CEILING_TYPE_LABELS: Record<string, string> = {
@@ -122,9 +138,11 @@ export function createEmptyBOQ(): BOQQuantities {
     doorsIronDouble: 0,
     doorsMaintSingle: 0,
     doorsMaintDouble: 0,
+    doorsMaintAluminum: 0,
     windowsAluminum: 0,
     windowsIron: 0,
     windowsMaint: 0,
+    windowsMaintIron: 0,
     ironGrilles: 0,
     marbleSills: 0,
     block20: 0,
@@ -286,7 +304,7 @@ export function resolveEffectiveSubRooms(subRooms: SubRoom[]): ResolvedSubRoom[]
 
 export function applySpaceTypePreset(space: Space, nextType: SpaceType): Space {
   const base: Space = { ...space, spaceType: nextType };
-  if (nextType === 'office_dorm') {
+  if (nextType === 'office_dorm' || nextType === 'prefab_dorm') {
     return {
       ...base,
       floorGrinding: true,
@@ -296,7 +314,7 @@ export function applySpaceTypePreset(space: Space, nextType: SpaceType): Space {
       ceilingType: 'paint',
     };
   }
-  if (nextType === 'bathrooms') {
+  if (isBathroomSpaceType(nextType)) {
     const subRooms: SubRoom[] =
       base.subRooms.length > 0
         ? base.subRooms
@@ -369,7 +387,16 @@ export function createNewSpace(name = 'فراغ جديد', spaceType: SpaceType 
     wallFullPlaster: false,
     ceilingType: 'none',
     sinkLength: 0,
-    doors: [],
+    doors: [
+      {
+        id: createId('dr'),
+        type: 'wood',
+        width: 1,
+        height: 2,
+        count: 1,
+        hasIronGrille: false,
+      },
+    ],
     windows: [],
     block20: createEmptyMasonry(),
     block15: createEmptyMasonry(),
@@ -394,7 +421,7 @@ export function calculateSpace(space: Space): SpaceCalculationResult {
   let singleMainWallArea = 2 * (mainL + mainW) * mainH;
   let singleSubRoomsWallArea = 0;
 
-  if (space.spaceType === 'bathrooms') {
+  if (isBathroomSpaceType(space.spaceType)) {
     const resolvedSubs = resolveEffectiveSubRooms(space.subRooms);
     let subFloorSum = 0;
     for (const sub of resolvedSubs) {
@@ -439,6 +466,9 @@ export function calculateSpace(space: Space): SpaceCalculationResult {
       case 'maint_double':
         boq.doorsMaintDouble += n * mult;
         break;
+      case 'maint_aluminum':
+        boq.doorsMaintAluminum += n * mult;
+        break;
     }
 
     // حمايات أبواب (Door iron security grille: W * H * N * 16 kg)
@@ -463,6 +493,9 @@ export function calculateSpace(space: Space): SpaceCalculationResult {
         break;
       case 'maint':
         boq.windowsMaint += n * mult;
+        break;
+      case 'maint_iron':
+        boq.windowsMaintIron += n * mult;
         break;
     }
 
@@ -639,7 +672,11 @@ export function calculateBlockGeneralWorks(block: Block): BlockGeneralWorksCalc 
   }
 
   const roofWaterproofing =
-    gw.roofWaterproofingMode === 'auto' ? autoRoofArea : safeNum(gw.roofWaterproofingManual);
+    gw.roofWaterproofingMode === 'none'
+      ? 0
+      : gw.roofWaterproofingMode === 'auto'
+      ? autoRoofArea
+      : safeNum(gw.roofWaterproofingManual);
   const roofTiles = safeNum(gw.roofTilesArea);
 
   let tyroleanGross = 0;

@@ -18,6 +18,7 @@ import {
   collectProjectCustomColumns,
   customItemKey,
   formatNum,
+  isBathroomSpaceType,
   safeNum,
   SPACE_TYPE_META,
   STANDARD_BOQ_COLUMNS,
@@ -585,7 +586,7 @@ export const BOQSummaryView: React.FC<BOQSummaryViewProps> = ({
                                         {formatNum(sp.height)} م
                                       </span>
                                     ) : null}
-                                    {sp.spaceType === 'bathrooms' && sp.subRooms.length > 0 && (
+                                    {isBathroomSpaceType(sp.spaceType) && sp.subRooms.length > 0 && (
                                       <>
                                         <span aria-hidden="true">·</span>
                                         <span className="text-cyan-400 font-sans">

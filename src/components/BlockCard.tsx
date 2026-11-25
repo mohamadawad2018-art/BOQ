@@ -32,9 +32,11 @@ import { SpaceEditorCard } from './SpaceEditorCard';
 interface BlockCardProps {
   block: Block;
   blockIndex: number;
+  projectName?: string;
   onChange: (updated: Block) => void;
   onFinishAndAddNew: () => void;
   onCloseOnly: () => void;
+  onCloseProjectAndViewSummary?: () => void;
   onReopen: () => void;
   onDuplicateBlock: () => void;
   onRequestDeleteBlock: () => void;
@@ -54,6 +56,8 @@ const DEFAULT_FLOOR_NAMES = [
 const SPACE_PRESETS: SpaceType[] = [
   'office_dorm',
   'bathrooms',
+  'prefab_dorm',
+  'prefab_bathrooms',
   'buffet_kitchen',
   'corridor',
   'staircase',
@@ -63,9 +67,11 @@ const SPACE_PRESETS: SpaceType[] = [
 export const BlockCard: React.FC<BlockCardProps> = ({
   block,
   blockIndex,
+  projectName,
   onChange,
   onFinishAndAddNew,
   onCloseOnly,
+  onCloseProjectAndViewSummary,
   onReopen,
   onDuplicateBlock,
   onRequestDeleteBlock,
@@ -151,8 +157,7 @@ export const BlockCard: React.FC<BlockCardProps> = ({
       floors = [floorToUse];
     }
 
-    const num = floorToUse.spaces.length + 1;
-    const defaultLabel = `${SPACE_TYPE_META[presetType].label.split(' ')[0]} ${num}`;
+    const defaultLabel = SPACE_TYPE_META[presetType].label;
     const newSpace = createNewSpace(defaultLabel, presetType);
 
     setActiveFloorId(floorToUse.id);
@@ -569,18 +574,25 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                 </button>
 
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {(['bathrooms', 'buffet_kitchen', 'corridor', 'staircase'] as SpaceType[]).map(
-                    (preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => addSpaceInsideBlock(preset)}
-                        className="min-h-[38px] px-3 rounded-lg bg-[#0b0f19] border border-slate-800 text-xs font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
-                      >
-                        + {SPACE_TYPE_META[preset].label}
-                      </button>
-                    )
-                  )}
+                  {(
+                    [
+                      'bathrooms',
+                      'prefab_dorm',
+                      'prefab_bathrooms',
+                      'buffet_kitchen',
+                      'corridor',
+                      'staircase',
+                    ] as SpaceType[]
+                  ).map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => addSpaceInsideBlock(preset)}
+                      className="min-h-[38px] px-3 rounded-lg bg-[#0b0f19] border border-slate-800 text-xs font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
+                    >
+                      + {SPACE_TYPE_META[preset].label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -597,21 +609,40 @@ export const BlockCard: React.FC<BlockCardProps> = ({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Roof Waterproofing */}
+            {/* Roof Waterproofing (Optional: None / Auto / Manual) */}
             <div className="rounded-xl bg-[#0b0f19]/80 border border-slate-800 p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-slate-200">عزل أسطح</span>
+                <span className="text-sm font-semibold text-slate-200">
+                  عزل أسطح{' '}
+                  <span className="text-xs font-normal text-slate-500">(اختياري)</span>
+                </span>
                 <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#111827] border border-slate-800">
                   <button
                     type="button"
-                    onClick={() => updateGeneralWorks({ roofWaterproofingMode: 'auto' })}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                      gw.roofWaterproofingMode === 'auto'
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'text-slate-400'
+                    onClick={() =>
+                      updateGeneralWorks({
+                        roofWaterproofingMode: 'none',
+                        roofWaterproofingManual: 0,
+                      })
+                    }
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                      gw.roofWaterproofingMode === 'none'
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    تلقائي (أعلى طابق)
+                    بدون عزل
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateGeneralWorks({ roofWaterproofingMode: 'auto' })}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                      gw.roofWaterproofingMode === 'auto'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    تلقائي
                   </button>
                   <button
                     type="button"
@@ -622,10 +653,10 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                           gw.roofWaterproofingManual || gwCalc.autoRoofArea,
                       })
                     }
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
                       gw.roofWaterproofingMode === 'manual'
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'text-slate-400'
+                        ? 'bg-cyan-500/20 text-cyan-300'
+                        : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     يدوي
@@ -633,20 +664,79 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                 </div>
               </div>
 
-              {gw.roofWaterproofingMode === 'auto' ? (
-                <div className="flex items-center justify-between min-h-[44px] rounded-xl bg-[#111827] border border-slate-800 px-3.5">
-                  <span className="text-xs text-slate-400">مجموع أرضيات أعلى طابق بالكتلة</span>
-                  <span className="font-num text-base font-bold text-emerald-400">
-                    {formatNum(gwCalc.autoRoofArea)} م²
+              {gw.roofWaterproofingMode === 'none' ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 min-h-[44px] rounded-xl bg-[#111827]/70 border border-dashed border-slate-800 px-3.5 py-2">
+                  <span className="text-xs text-slate-500">
+                    تم حذف / إلغاء عزل الأسطح لهذا البناء (0 م²)
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => updateGeneralWorks({ roofWaterproofingMode: 'auto' })}
+                    className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                  >
+                    تفعيل تلقائي
+                  </button>
+                </div>
+              ) : gw.roofWaterproofingMode === 'auto' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between min-h-[44px] rounded-xl bg-[#111827] border border-slate-800 px-3.5">
+                    <span className="text-xs text-slate-400">مجموع أرضيات أعلى طابق بالكتلة</span>
+                    <span className="font-num text-base font-bold text-emerald-400">
+                      {formatNum(gwCalc.autoRoofArea)} م²
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-end gap-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateGeneralWorks({
+                          roofWaterproofingMode: 'manual',
+                          roofWaterproofingManual: gwCalc.autoRoofArea,
+                        })
+                      }
+                      className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors"
+                    >
+                      تعديل القيمة يدوياً
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateGeneralWorks({
+                          roofWaterproofingMode: 'none',
+                          roofWaterproofingManual: 0,
+                        })
+                      }
+                      className="inline-flex items-center gap-1 text-rose-400 hover:text-rose-300 font-medium transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>حذف العزل</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <NumericInput
-                  label="مساحة عزل الأسطح (يدوي)"
-                  value={gw.roofWaterproofingManual}
-                  onChange={(v) => updateGeneralWorks({ roofWaterproofingManual: v })}
-                  unit="م²"
-                />
+                <div className="space-y-2">
+                  <NumericInput
+                    label="مساحة عزل الأسطح (يدوي)"
+                    value={gw.roofWaterproofingManual}
+                    onChange={(v) => updateGeneralWorks({ roofWaterproofingManual: v })}
+                    unit="م²"
+                  />
+                  <div className="flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateGeneralWorks({
+                          roofWaterproofingMode: 'none',
+                          roofWaterproofingManual: 0,
+                        })
+                      }
+                      className="inline-flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 font-medium transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>حذف عزل الأسطح</span>
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -657,12 +747,25 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                 <button
                   type="button"
                   onClick={() =>
-                    updateGeneralWorks({ roofTilesArea: gwCalc.roofWaterproofing })
+                    updateGeneralWorks({
+                      roofTilesArea:
+                        gwCalc.roofWaterproofing > 0
+                          ? gwCalc.roofWaterproofing
+                          : gwCalc.autoRoofArea,
+                    })
                   }
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-300 hover:text-cyan-200 transition-colors"
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  <span>نسخ من مساحة السطح ({formatNum(gwCalc.roofWaterproofing)} م²)</span>
+                  <span>
+                    نسخ من مساحة السطح (
+                    {formatNum(
+                      gwCalc.roofWaterproofing > 0
+                        ? gwCalc.roofWaterproofing
+                        : gwCalc.autoRoofArea
+                    )}{' '}
+                    م²)
+                  </span>
                 </button>
               </div>
               <NumericInput
@@ -891,7 +994,7 @@ export const BlockCard: React.FC<BlockCardProps> = ({
           />
         </div>
 
-        {/* Prominent Finish & Switch CTA + Close Only */}
+        {/* Prominent Finish & Switch CTA + Close Only + Close Entire Project */}
         <div className="pt-3 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate-400">
             يمكنك إعادة فتح البناء وتعديل أي قياسات أو إضافة فراغات في أي وقت لاحقاً.
@@ -908,11 +1011,23 @@ export const BlockCard: React.FC<BlockCardProps> = ({
             <button
               type="button"
               onClick={onFinishAndAddNew}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[48px] px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-bold text-white shadow-[0_0_24px_-6px_rgba(16,185,129,0.6)] transition-all active:scale-[0.99] whitespace-nowrap"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[48px] px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-bold text-white shadow-[0_0_24px_-6px_rgba(16,185,129,0.6)] transition-all active:scale-[0.99] whitespace-nowrap"
             >
               <CheckCircle2 className="h-5 w-5" />
               <span>إغلاق البناء وفتح بناء جديد</span>
             </button>
+            {onCloseProjectAndViewSummary && (
+              <button
+                type="button"
+                onClick={onCloseProjectAndViewSummary}
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[48px] px-5 py-3 rounded-xl border border-cyan-400/50 bg-cyan-500/15 hover:bg-cyan-500/25 text-xs sm:text-sm font-bold text-cyan-200 transition-all active:scale-[0.99] whitespace-nowrap"
+              >
+                <Table2 className="h-4 w-4" />
+                <span>
+                  إغلاق المشروع{projectName?.trim() ? `: ${projectName.trim()}` : ''} وعرض الملخص
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>

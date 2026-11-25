@@ -1,6 +1,8 @@
 export type SpaceType =
   | 'office_dorm'
   | 'bathrooms'
+  | 'prefab_dorm'
+  | 'prefab_bathrooms'
   | 'buffet_kitchen'
   | 'corridor'
   | 'staircase'
@@ -20,9 +22,10 @@ export type DoorType =
   | 'iron_single'
   | 'iron_double'
   | 'maint_single'
-  | 'maint_double';
+  | 'maint_double'
+  | 'maint_aluminum';
 
-export type WindowType = 'aluminum' | 'iron' | 'maint';
+export type WindowType = 'aluminum' | 'iron' | 'maint' | 'maint_iron';
 
 export type CustomItemUnit = 'م²' | 'م.ط' | 'كغ' | 'عدد' | 'مقطوعية';
 
@@ -124,7 +127,7 @@ export interface ExteriorFacade {
 }
 
 export interface BlockGeneralWorks {
-  roofWaterproofingMode: 'auto' | 'manual';
+  roofWaterproofingMode: 'none' | 'auto' | 'manual';
   roofWaterproofingManual: number;
   roofTilesArea: number;
   tyroleanMode: 'facades' | 'perimeter';
@@ -197,9 +200,11 @@ export interface BOQQuantities {
   doorsIronDouble: number;
   doorsMaintSingle: number;
   doorsMaintDouble: number;
+  doorsMaintAluminum: number;
   windowsAluminum: number;
   windowsIron: number;
   windowsMaint: number;
+  windowsMaintIron: number;
   ironGrilles: number;
   marbleSills: number;
   block20: number;

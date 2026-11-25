@@ -28,6 +28,7 @@ import {
   createId,
   DOOR_TYPE_LABELS,
   formatNum,
+  isBathroomSpaceType,
   resolveEffectiveSubRooms,
   safeNum,
   SPACE_TYPE_META,
@@ -50,6 +51,8 @@ interface SpaceEditorCardProps {
 const SPACE_TYPE_LIST: SpaceType[] = [
   'office_dorm',
   'bathrooms',
+  'prefab_dorm',
+  'prefab_bathrooms',
   'buffet_kitchen',
   'corridor',
   'staircase',
@@ -100,36 +103,76 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
 
   const calc = calculateSpace(space);
   const mult = calc.multiplier;
-  const resolvedSubRooms =
-    space.spaceType === 'bathrooms' ? resolveEffectiveSubRooms(space.subRooms) : [];
+  const isBath = isBathroomSpaceType(space.spaceType);
+  const resolvedSubRooms = isBath ? resolveEffectiveSubRooms(space.subRooms) : [];
 
   const update = (patch: Partial<Space>) => {
     onChange({ ...space, ...patch });
   };
 
   const handleSelectSpaceType = (nextType: SpaceType) => {
-    onChange(applySpaceTypePreset(space, nextType));
+    const nextSpace = applySpaceTypePreset(space, nextType);
+    // Automatically fill space name with selected type label (user can edit freely anytime)
+    const autoName = SPACE_TYPE_META[nextType].label;
+    const nextIsBath = isBathroomSpaceType(nextType);
+    const syncedDoors = nextIsBath
+      ? nextSpace.doors.map((d) =>
+          (d.type === 'aluminum' || d.type === 'maint_aluminum') &&
+          nextSpace.subRooms.length > 0 &&
+          d.count <= 1
+            ? { ...d, count: nextSpace.subRooms.length }
+            : d
+        )
+      : nextSpace.doors;
+    onChange({
+      ...nextSpace,
+      name: autoName,
+      doors: syncedDoors,
+    });
   };
 
-  // Sub-rooms (0 to 6) for bathrooms
+  // Helper to sync aluminum doors (supply or maintenance) when sub-room count changes
+  const syncAluminumDoorsWithSubRooms = (
+    doors: DoorEntry[],
+    oldSubCount: number,
+    newSubCount: number
+  ): DoorEntry[] => {
+    if (newSubCount <= 0) return doors;
+    return doors.map((d) => {
+      if (d.type !== 'aluminum' && d.type !== 'maint_aluminum') return d;
+      if (d.count === oldSubCount || (oldSubCount === 0 && d.count === 1)) {
+        return { ...d, count: newSubCount };
+      }
+      return d;
+    });
+  };
+
+  // Sub-rooms (0 to 6) for bathrooms & prefab bathrooms
   const setSubRoomsCount = (count: number) => {
     const safeCount = Math.max(0, Math.min(6, Math.floor(count)));
-    if (safeCount === space.subRooms.length) return;
-    if (safeCount < space.subRooms.length) {
-      update({ subRooms: space.subRooms.slice(0, safeCount) });
-      return;
+    const oldCount = space.subRooms.length;
+    if (safeCount === oldCount) return;
+
+    let nextSubRooms = space.subRooms;
+    if (safeCount < oldCount) {
+      nextSubRooms = space.subRooms.slice(0, safeCount);
+    } else {
+      nextSubRooms = [...space.subRooms];
+      for (let i = oldCount + 1; i <= safeCount; i++) {
+        nextSubRooms.push({
+          id: createId('sub'),
+          label: `فراغ فرعي ${i}`,
+          length: 0,
+          width: 0,
+          height: 2,
+        });
+      }
     }
-    const next = [...space.subRooms];
-    for (let i = space.subRooms.length + 1; i <= safeCount; i++) {
-      next.push({
-        id: createId('sub'),
-        label: `فراغ فرعي ${i}`,
-        length: 0,
-        width: 0,
-        height: 2,
-      });
-    }
-    update({ subRooms: next });
+
+    update({
+      subRooms: nextSubRooms,
+      doors: syncAluminumDoorsWithSubRooms(space.doors, oldCount, safeCount),
+    });
   };
 
   const addSubRoom = () => {
@@ -146,31 +189,53 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
   };
 
   const removeSubRoom = (id: string) => {
-    update({ subRooms: space.subRooms.filter((sr) => sr.id !== id) });
+    const oldCount = space.subRooms.length;
+    const nextSubRooms = space.subRooms.filter((sr) => sr.id !== id);
+    update({
+      subRooms: nextSubRooms,
+      doors: syncAluminumDoorsWithSubRooms(space.doors, oldCount, nextSubRooms.length),
+    });
   };
 
-  // Doors
+  // Doors (newly added appears at the TOP; older doors shift down)
   const addDoor = () => {
     const entry: DoorEntry = {
       id: createId('dr'),
-      type: space.spaceType === 'bathrooms' ? 'aluminum' : 'wood',
-      width: space.spaceType === 'bathrooms' ? 0.8 : 1.0,
-      height: 2.1,
-      count: 1,
+      type: isBath ? 'aluminum' : 'wood',
+      width: isBath ? 0.8 : 1.0,
+      height: 2.0,
+      count: isBath ? Math.max(1, space.subRooms.length) : 1,
       hasIronGrille: false,
     };
-    update({ doors: [...space.doors, entry] });
+    update({ doors: [entry, ...space.doors] });
   };
 
   const updateDoor = (id: string, patch: Partial<DoorEntry>) => {
-    update({ doors: space.doors.map((d) => (d.id === id ? { ...d, ...patch } : d)) });
+    update({
+      doors: space.doors.map((d) => {
+        if (d.id !== id) return d;
+        const next: DoorEntry = { ...d, ...patch };
+        // In bathrooms / prefab bathrooms, switching a door to aluminum (supply or maintenance)
+        // automatically sets its count to match the number of sub-rooms
+        if (
+          isBath &&
+          patch.type &&
+          patch.type !== d.type &&
+          (patch.type === 'aluminum' || patch.type === 'maint_aluminum') &&
+          space.subRooms.length > 0
+        ) {
+          next.count = space.subRooms.length;
+        }
+        return next;
+      }),
+    });
   };
 
   const removeDoor = (id: string) => {
     update({ doors: space.doors.filter((d) => d.id !== id) });
   };
 
-  // Windows
+  // Windows (newly added appears at the TOP; older windows shift down)
   const addWindow = () => {
     const entry: WindowEntry = {
       id: createId('wn'),
@@ -181,7 +246,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
       hasIronGrille: false,
       hasMarbleSill: false,
     };
-    update({ windows: [...space.windows, entry] });
+    update({ windows: [entry, ...space.windows] });
   };
 
   const updateWindow = (id: string, patch: Partial<WindowEntry>) => {
@@ -258,7 +323,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                 </strong>{' '}
                 م²
               </span>
-              {space.spaceType === 'bathrooms' && (
+              {isBath && (
                 <>
                   <span aria-hidden="true">·</span>
                   <span>{space.subRooms.length} فراغات فرعية</span>
@@ -359,7 +424,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                 {SPACE_TYPE_META[space.spaceType].shortDesc}
               </span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {SPACE_TYPE_LIST.map((typeKey) => {
                 const active = space.spaceType === typeKey;
                 return (
@@ -437,12 +502,12 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
               </div>
             )}
 
-            {/* Main Room Dimensions (ALWAYS shown first, including Bathrooms / WCs) */}
+            {/* Main Room Dimensions (ALWAYS shown first, including Bathrooms & Prefab Bathrooms) */}
             <div className="space-y-2">
-              {space.spaceType === 'bathrooms' && (
+              {isBath && (
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-xs font-semibold text-emerald-300">
-                    أبعاد الفراغ الكامل (الحمام / الخلاءات الرئيسية)
+                    أبعاد الفراغ الكامل ({SPACE_TYPE_META[space.spaceType].label})
                   </span>
                   <span className="text-[11px] text-slate-400">
                     تُحسب الأرضية والسقف والجدران الخارجية على هذه الأبعاد
@@ -454,7 +519,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                   label={
                     space.spaceType === 'staircase'
                       ? 'طول بيت الدرج (L)'
-                      : space.spaceType === 'bathrooms'
+                      : isBath
                       ? 'طول الفراغ الكامل (L)'
                       : 'الطول (L)'
                   }
@@ -466,7 +531,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                   label={
                     space.spaceType === 'staircase'
                       ? 'عرض بيت الدرج (W)'
-                      : space.spaceType === 'bathrooms'
+                      : isBath
                       ? 'عرض الفراغ الكامل (W)'
                       : 'العرض (W)'
                   }
@@ -475,9 +540,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                   unit="م"
                 />
                 <NumericInput
-                  label={
-                    space.spaceType === 'bathrooms' ? 'ارتفاع الفراغ الكامل (H)' : 'الارتفاع (H)'
-                  }
+                  label={isBath ? 'ارتفاع الفراغ الكامل (H)' : 'الارتفاع (H)'}
                   value={space.height}
                   onChange={(v) => update({ height: v })}
                   unit="م"
@@ -485,8 +548,8 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
               </div>
             </div>
 
-            {/* Sub-Rooms Section specifically for Bathrooms / WCs */}
-            {space.spaceType === 'bathrooms' && (
+            {/* Sub-Rooms Section specifically for Bathrooms / Prefab Bathrooms */}
+            {isBath && (
               <div className="rounded-xl bg-[#0b0f19]/75 border border-cyan-500/30 p-4 space-y-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -645,7 +708,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-[#0b0f19] border border-slate-800/90 px-4 py-3 text-xs">
             <div>
               <span className="text-slate-400">
-                {space.spaceType === 'bathrooms' ? 'أرضية / سقف: ' : 'مساحة الأرضية: '}
+                {isBath ? 'أرضية / سقف: ' : 'مساحة الأرضية: '}
               </span>
               <span className="font-num font-semibold text-emerald-400">
                 {formatNum(calc.singleFloorArea)}
@@ -655,7 +718,7 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
             <span className="text-slate-700" aria-hidden="true">
               /
             </span>
-            {space.spaceType === 'bathrooms' && calc.singleSubRoomsWallArea > 0 ? (
+            {isBath && calc.singleSubRoomsWallArea > 0 ? (
               <>
                 <div>
                   <span className="text-slate-400">جدران الفراغ الرئيسي: </span>
@@ -845,10 +908,13 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                   {space.doors.map((d) => {
                     const area = safeNum(d.width) * safeNum(d.height) * safeNum(d.count);
                     const grilleKg = area * 16 * mult;
+                    const isAlumDoor = d.type === 'aluminum' || d.type === 'maint_aluminum';
                     const resultVal =
                       d.type === 'iron_single' || d.type === 'iron_double'
                         ? `${formatNum(area * 40 * mult)} كغ`
-                        : d.type === 'maint_single' || d.type === 'maint_double'
+                        : d.type === 'maint_single' ||
+                          d.type === 'maint_double' ||
+                          d.type === 'maint_aluminum'
                         ? `${formatNum(safeNum(d.count) * mult)} عدد`
                         : `${formatNum(area * mult)} م²`;
 
@@ -899,6 +965,19 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                             onChange={(v) => updateDoor(d.id, { count: v })}
                           />
                         </div>
+
+                        {isBath &&
+                          isAlumDoor &&
+                          space.subRooms.length > 0 &&
+                          d.count !== space.subRooms.length && (
+                            <button
+                              type="button"
+                              onClick={() => updateDoor(d.id, { count: space.subRooms.length })}
+                              className="text-[11px] font-medium text-cyan-400 hover:text-cyan-300 transition-colors"
+                            >
+                              تعيين العدد تلقائياً حسب الفراغات الفرعية ({space.subRooms.length})
+                            </button>
+                          )}
 
                         {/* Door Iron Security Grille Toggle */}
                         <div className="pt-0.5">
