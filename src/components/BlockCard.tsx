@@ -82,10 +82,22 @@ export const BlockCard: React.FC<BlockCardProps> = ({
   const [newlyAddedSpaceId, setNewlyAddedSpaceId] = useState<string | null>(null);
   const [expandSignal, setExpandSignal] = useState<{ value: boolean; seq: number } | null>(null);
   const [showBlockSummary, setShowBlockSummary] = useState(false);
+  const [showGeneralWorks, setShowGeneralWorks] = useState(false);
+  const [showFloorEdit, setShowFloorEdit] = useState(false);
+  const [showNotes, setShowNotes] = useState(() => Boolean(block.generalNotes.trim()));
 
   const summary = useMemo(() => calculateBlockSummary(block), [block]);
   const gw = block.generalWorks;
   const gwCalc = summary.generalWorks;
+
+  const generalWorksSummaryText = useMemo(() => {
+    const parts: string[] = [];
+    if (gwCalc.roofWaterproofing > 0) parts.push(`عزل: ${formatNum(gwCalc.roofWaterproofing)} م²`);
+    if (gwCalc.roofTiles > 0) parts.push(`قرميد: ${formatNum(gwCalc.roofTiles)} م²`);
+    if (gwCalc.tyroleanNet > 0) parts.push(`رشة: ${formatNum(gwCalc.tyroleanNet)} م²`);
+    if (gw.customItems.length > 0) parts.push(`${gw.customItems.length} بنود إضافية`);
+    return parts.join(' · ');
+  }, [gwCalc, gw.customItems.length]);
 
   const effectiveActiveFloor: Floor | undefined =
     block.floors.find((f) => f.id === activeFloorId) || block.floors[0];
@@ -419,10 +431,10 @@ export const BlockCard: React.FC<BlockCardProps> = ({
         </div>
       </div>
 
-      {/* Floors Selector Bar */}
-      <div className="border-b border-slate-800/80 px-5 py-3.5 bg-[#0b0f19]/40">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+      {/* Floors Selector Bar (Clean 1-Row Mobile Strip) */}
+      <div className="border-b border-slate-800/80 px-4 sm:px-5 py-3 bg-[#0b0f19]/40 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 flex-1">
             <Layers className="h-4 w-4 text-cyan-400 shrink-0" />
             {block.floors.map((floor) => {
               const isSelected = effectiveActiveFloor?.id === floor.id;
@@ -431,7 +443,7 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                   key={floor.id}
                   type="button"
                   onClick={() => setActiveFloorId(floor.id)}
-                  className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 ${
+                  className={`min-h-[38px] px-3 py-1 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 ${
                     isSelected
                       ? 'bg-cyan-500/15 border-cyan-400/60 text-cyan-300'
                       : 'bg-[#111827] border-slate-800 text-slate-400 hover:text-slate-200'
@@ -444,57 +456,70 @@ export const BlockCard: React.FC<BlockCardProps> = ({
             <button
               type="button"
               onClick={addFloor}
-              className="inline-flex items-center gap-1 min-h-[40px] px-3 rounded-xl border border-dashed border-slate-700 text-xs font-medium text-slate-300 hover:border-cyan-400/60 hover:text-cyan-300 transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1 min-h-[38px] px-2.5 rounded-xl border border-dashed border-slate-700 text-xs font-medium text-slate-300 hover:border-cyan-400/60 hover:text-cyan-300 transition-colors whitespace-nowrap shrink-0"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>إضافة طابق</span>
+              <span>طابق</span>
             </button>
           </div>
 
           {effectiveActiveFloor && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400 hidden sm:inline">
-                مساحة الطابق:{' '}
-                <strong className="font-num text-cyan-300">{formatNum(activeFloorArea)}</strong> م²
-              </span>
+            <button
+              type="button"
+              onClick={() => setShowFloorEdit((v) => !v)}
+              title="تعديل أو حذف الطابق"
+              aria-label="تعديل أو حذف الطابق"
+              className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                showFloorEdit
+                  ? 'border-cyan-400/60 bg-cyan-500/15 text-cyan-300'
+                  : 'border-slate-800 bg-[#111827] text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {showFloorEdit && effectiveActiveFloor && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/70">
+            <div className="flex items-center gap-2 flex-1 min-w-[180px]">
               <input
                 type="text"
                 value={effectiveActiveFloor.name}
                 onChange={(e) => renameFloor(effectiveActiveFloor.id, e.target.value)}
                 aria-label="تعديل اسم الطابق"
-                className="w-36 min-h-[38px] rounded-lg bg-[#0b0f19] border border-slate-800 px-2.5 text-xs font-medium text-slate-200 focus:border-cyan-400/60 outline-none"
+                className="flex-1 min-h-[38px] rounded-lg bg-[#0b0f19] border border-slate-700 px-3 text-xs font-medium text-slate-200 focus:border-cyan-400/60 outline-none"
               />
-              {block.floors.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => onDeleteFloorToTrash(effectiveActiveFloor)}
-                  className="flex h-[38px] w-[38px] items-center justify-center rounded-lg border border-slate-800 text-slate-500 hover:border-rose-500/40 hover:text-rose-400 transition-colors"
-                  title="حذف الطابق الحالي"
-                  aria-label="حذف الطابق الحالي"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
+              <span className="text-xs text-slate-400 whitespace-nowrap">
+                <strong className="font-num text-cyan-300">{formatNum(activeFloorArea)}</strong> م²
+              </span>
             </div>
-          )}
-        </div>
+            {block.floors.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onDeleteFloorToTrash(effectiveActiveFloor)}
+                className="inline-flex items-center gap-1 min-h-[38px] px-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-medium text-rose-300 hover:bg-rose-500/20 transition-colors whitespace-nowrap"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>حذف الطابق</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Active Floor Spaces Section */}
-      <div className="p-5 space-y-5">
-        <div className="space-y-4">
-          {/* Quick Add Space Preset Buttons + Expand/Collapse All */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-slate-300 ml-1">
-                إضافة فراغ داخل {effectiveActiveFloor?.name || 'البناء'}:
-              </span>
+      <div className="p-3.5 sm:p-5 space-y-4">
+        <div className="space-y-3">
+          {/* Single Swipeable Row for Fast Space Creation + Expand/Collapse */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-1">
               {SPACE_PRESETS.map((t) => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => addSpaceInsideBlock(t)}
-                  className="inline-flex items-center gap-1 min-h-[38px] px-3 rounded-xl bg-[#0b0f19] border border-slate-800 text-xs font-medium text-slate-200 hover:border-emerald-500/50 hover:text-emerald-300 transition-colors whitespace-nowrap"
+                  className="inline-flex items-center gap-1 min-h-[38px] px-3 rounded-xl bg-[#0b0f19] border border-slate-800 text-xs font-medium text-slate-200 hover:border-emerald-500/50 hover:text-emerald-300 transition-colors whitespace-nowrap shrink-0"
                 >
                   <Plus className="h-3.5 w-3.5 text-emerald-400" />
                   <span>{SPACE_TYPE_META[t].label}</span>
@@ -503,7 +528,7 @@ export const BlockCard: React.FC<BlockCardProps> = ({
             </div>
 
             {effectiveActiveFloor && effectiveActiveFloor.spaces.length > 1 && (
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="hidden sm:flex items-center gap-1 shrink-0">
                 <button
                   type="button"
                   onClick={() =>
@@ -512,7 +537,7 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                   className="inline-flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg border border-slate-800 text-[11px] font-medium text-slate-400 hover:text-slate-200 transition-colors whitespace-nowrap"
                 >
                   <ChevronsUpDown className="h-3.5 w-3.5" />
-                  <span>فتح الكل</span>
+                  <span>فتح</span>
                 </button>
                 <button
                   type="button"
@@ -522,27 +547,24 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                   className="inline-flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg border border-slate-800 text-[11px] font-medium text-slate-400 hover:text-slate-200 transition-colors whitespace-nowrap"
                 >
                   <ChevronsDownUp className="h-3.5 w-3.5" />
-                  <span>طي الكل</span>
+                  <span>طي</span>
                 </button>
               </div>
             )}
           </div>
 
           {!effectiveActiveFloor || effectiveActiveFloor.spaces.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-800 bg-[#0b0f19]/50 py-10 px-6 text-center">
+            <div className="rounded-2xl border border-dashed border-slate-800 bg-[#0b0f19]/50 py-8 px-4 text-center">
               <p className="text-sm font-medium text-slate-300">
-                لا توجد فراغات مسجّلة في {effectiveActiveFloor?.name || 'هذا البناء'} حتى الآن
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                اختر نوع الفراغ من الأعلى أو اضغط أدناه لبدء الرفع الميداني مباشرة
+                لا توجد فراغات في {effectiveActiveFloor?.name || 'هذا البناء'} بعد
               </p>
               <button
                 type="button"
                 onClick={() => addSpaceInsideBlock('office_dorm')}
-                className="mt-4 inline-flex items-center gap-2 min-h-[46px] px-6 rounded-xl bg-emerald-600 text-sm font-bold text-white hover:bg-emerald-500 transition-colors"
+                className="mt-3 inline-flex items-center gap-2 min-h-[44px] px-5 rounded-xl bg-emerald-600 text-sm font-bold text-white hover:bg-emerald-500 transition-colors"
               >
                 <Plus className="h-4 w-4" />
-                <span>إضافة أول فراغ في البناء</span>
+                <span>إضافة أول فراغ</span>
               </button>
             </div>
           ) : (
@@ -562,53 +584,49 @@ export const BlockCard: React.FC<BlockCardProps> = ({
                 />
               ))}
 
-              {/* Prominent Bottom "Add Space Inside This Block" Action Bar */}
-              <div className="pt-2 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-dashed border-emerald-500/35 bg-emerald-500/5 px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => addSpaceInsideBlock('office_dorm')}
-                  className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-bold text-white transition-colors whitespace-nowrap"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>إضافة فراغ جديد في {effectiveActiveFloor.name}</span>
-                </button>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {(
-                    [
-                      'bathrooms',
-                      'prefab_dorm',
-                      'prefab_bathrooms',
-                      'buffet_kitchen',
-                      'corridor',
-                      'staircase',
-                    ] as SpaceType[]
-                  ).map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => addSpaceInsideBlock(preset)}
-                      className="min-h-[38px] px-3 rounded-lg bg-[#0b0f19] border border-slate-800 text-xs font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
-                    >
-                      + {SPACE_TYPE_META[preset].label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Clean Single Bottom Add-Space Button */}
+              <button
+                type="button"
+                onClick={() => addSpaceInsideBlock('office_dorm')}
+                className="w-full inline-flex items-center justify-center gap-2 min-h-[46px] px-4 rounded-xl border border-dashed border-emerald-500/45 bg-emerald-500/[0.06] hover:bg-emerald-500/15 text-sm font-bold text-emerald-300 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                <span>إضافة فراغ جديد في {effectiveActiveFloor.name}</span>
+              </button>
             </div>
           )}
         </div>
 
-        {/* Block-Level General Works Panel */}
-        <div className="pt-6 border-t border-slate-800/90 space-y-5">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-cyan-400" />
-            <h4 className="text-base font-bold text-slate-100">
-              الأعمال الكلية للكتلة (الأسطح والواجهات)
-            </h4>
-          </div>
+        {/* Collapsible Block-Level General Works Panel (Roof, Tiles, Tyrolean, Extra Items) */}
+        <div className="rounded-xl bg-[#0b0f19]/60 border border-slate-800/90 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowGeneralWorks((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-right hover:bg-slate-800/30 transition-colors"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-slate-200">
+                  أعمال السطح والواجهات وبنود الكتلة
+                </div>
+                <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                  {generalWorksSummaryText || 'عزل أسطح، قرميد، رشة تيرولية، وبنود إضافية (اختياري)'}
+                </div>
+              </div>
+            </div>
+            <span className="text-slate-400 shrink-0">
+              {showGeneralWorks ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </span>
+          </button>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {showGeneralWorks && (
+            <div className="border-t border-slate-800/80 p-3.5 sm:p-4 space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Roof Waterproofing (Optional: None / Auto / Manual) */}
             <div className="rounded-xl bg-[#0b0f19]/80 border border-slate-800 p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -937,20 +955,22 @@ export const BlockCard: React.FC<BlockCardProps> = ({
             onChange={(next) => updateGeneralWorks({ customItems: next })}
             title="بنود سريعة للاحتياط على مستوى الكتلة"
           />
+            </div>
+          )}
         </div>
 
         {/* Live Collapsible Block Totals Summary */}
         {activeBlockBOQItems.length > 0 && (
-          <div className="pt-5 border-t border-slate-800/90">
+          <div className="rounded-xl bg-[#0b0f19]/60 border border-slate-800/90 overflow-hidden">
             <button
               type="button"
               onClick={() => setShowBlockSummary((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 py-1 text-right"
+              className="flex w-full items-center justify-between gap-2 px-4 py-3 text-right hover:bg-slate-800/30 transition-colors"
             >
               <div className="flex items-center gap-2">
                 <Table2 className="h-4 w-4 text-emerald-400" />
                 <span className="text-sm font-semibold text-slate-200">
-                  معاينة إجمالي كميات هذا البناء ({activeBlockBOQItems.length} بند نشط)
+                  ملخص كميات هذا البناء ({activeBlockBOQItems.length} بند)
                 </span>
               </div>
               <span className="text-slate-400">
@@ -963,11 +983,11 @@ export const BlockCard: React.FC<BlockCardProps> = ({
             </button>
 
             {showBlockSummary && (
-              <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              <div className="border-t border-slate-800/80 p-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                 {activeBlockBOQItems.map((it) => (
                   <div
                     key={it.key}
-                    className="flex items-center justify-between gap-2 rounded-xl bg-[#0b0f19] border border-slate-800 px-3 py-2 text-xs"
+                    className="flex items-center justify-between gap-2 rounded-xl bg-[#111827] border border-slate-800 px-3 py-2 text-xs"
                   >
                     <span className="text-slate-400 truncate">{it.label}</span>
                     <span className="font-num font-bold text-emerald-400 shrink-0">
@@ -980,55 +1000,63 @@ export const BlockCard: React.FC<BlockCardProps> = ({
           </div>
         )}
 
-        {/* Block-Level General Notes */}
-        <div className="pt-5 border-t border-slate-800/90 space-y-2">
-          <label className="text-sm font-semibold text-slate-200 block">
-            ملاحظات عامة للبناء ({block.name || 'البناء الحالي'})
-          </label>
-          <textarea
-            rows={2}
-            value={block.generalNotes}
-            onChange={(e) => updateBlock({ generalNotes: e.target.value })}
-            placeholder="سجّل الملاحظات الهندسية الخاصة بهذا البناء (تظهر مباشرة أسفل إجمالي الكتلة في تقرير Excel)..."
-            className="w-full rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-500/20 outline-none resize-y"
-          />
+        {/* Collapsible Block-Level General Notes */}
+        <div className="rounded-xl bg-[#0b0f19]/60 border border-slate-800/90 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowNotes((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 px-4 py-3 text-right hover:bg-slate-800/30 transition-colors"
+          >
+            <span className="text-xs sm:text-sm font-semibold text-slate-300">
+              ملاحظات البناء {block.generalNotes.trim() ? '· (مسجّلة)' : '(اختياري)'}
+            </span>
+            <span className="text-slate-400">
+              {showNotes ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </span>
+          </button>
+          {showNotes && (
+            <div className="border-t border-slate-800/80 p-3.5">
+              <textarea
+                rows={2}
+                value={block.generalNotes}
+                onChange={(e) => updateBlock({ generalNotes: e.target.value })}
+                placeholder="ملاحظات هندسية خاصة بهذا البناء..."
+                className="w-full rounded-xl bg-[#111827] border border-slate-700/80 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 outline-none resize-y"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Prominent Finish & Switch CTA + Close Only + Close Entire Project */}
-        <div className="pt-3 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-400">
-            يمكنك إعادة فتح البناء وتعديل أي قياسات أو إضافة فراغات في أي وقت لاحقاً.
-          </p>
-          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+        {/* Clean Mobile-Friendly Block Action Footer */}
+        <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center lg:justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onCloseOnly}
+            className="inline-flex items-center justify-center gap-1.5 min-h-[46px] px-4 py-2.5 rounded-xl border border-slate-700 bg-[#0b0f19] hover:border-emerald-500/40 hover:text-emerald-300 text-xs sm:text-sm font-semibold text-slate-300 transition-colors whitespace-nowrap"
+          >
+            <Minimize2 className="h-4 w-4" />
+            <span>إغلاق وطي البناء</span>
+          </button>
+          <button
+            type="button"
+            onClick={onFinishAndAddNew}
+            className="inline-flex items-center justify-center gap-2 min-h-[46px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-bold text-white shadow-[0_0_20px_-6px_rgba(16,185,129,0.6)] transition-all active:scale-[0.99] whitespace-nowrap"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            <span>إغلاق البناء وفتح بناء جديد</span>
+          </button>
+          {onCloseProjectAndViewSummary && (
             <button
               type="button"
-              onClick={onCloseOnly}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[48px] px-4 py-3 rounded-xl border border-slate-700 bg-[#0b0f19] hover:border-emerald-500/40 hover:text-emerald-300 text-xs sm:text-sm font-semibold text-slate-300 transition-colors whitespace-nowrap"
+              onClick={onCloseProjectAndViewSummary}
+              className="sm:col-span-2 lg:col-span-1 inline-flex items-center justify-center gap-2 min-h-[46px] px-4 py-2.5 rounded-xl border border-cyan-400/50 bg-cyan-500/15 hover:bg-cyan-500/25 text-xs sm:text-sm font-bold text-cyan-200 transition-colors whitespace-nowrap"
             >
-              <Minimize2 className="h-4 w-4" />
-              <span>إغلاق وطي البناء</span>
+              <Table2 className="h-4 w-4" />
+              <span>
+                إغلاق المشروع{projectName?.trim() ? `: ${projectName.trim()}` : ''} وعرض الملخص
+              </span>
             </button>
-            <button
-              type="button"
-              onClick={onFinishAndAddNew}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[48px] px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-bold text-white shadow-[0_0_24px_-6px_rgba(16,185,129,0.6)] transition-all active:scale-[0.99] whitespace-nowrap"
-            >
-              <CheckCircle2 className="h-5 w-5" />
-              <span>إغلاق البناء وفتح بناء جديد</span>
-            </button>
-            {onCloseProjectAndViewSummary && (
-              <button
-                type="button"
-                onClick={onCloseProjectAndViewSummary}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[48px] px-5 py-3 rounded-xl border border-cyan-400/50 bg-cyan-500/15 hover:bg-cyan-500/25 text-xs sm:text-sm font-bold text-cyan-200 transition-all active:scale-[0.99] whitespace-nowrap"
-              >
-                <Table2 className="h-4 w-4" />
-                <span>
-                  إغلاق المشروع{projectName?.trim() ? `: ${projectName.trim()}` : ''} وعرض الملخص
-                </span>
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </section>

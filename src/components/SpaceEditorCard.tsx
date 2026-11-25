@@ -78,16 +78,20 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
   onDelete,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [activeSection, setActiveSection] = useState<
+    'finishes' | 'openings' | 'masonry' | 'extra'
+  >('finishes');
   const [sinkManuallyShown, setSinkManuallyShown] = useState(space.sinkLength > 0);
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [showMasonry, setShowMasonry] = useState(
-    () =>
-      calcMasonryArea(space.block20) > 0 ||
-      calcMasonryArea(space.block15) > 0 ||
-      calcMasonryArea(space.block10) > 0 ||
-      calcMasonryArea(space.demolition) > 0 ||
-      safeNum(space.extraPlaster) > 0
-  );
+
+  const hasMasonryData =
+    calcMasonryArea(space.block20) > 0 ||
+    calcMasonryArea(space.block15) > 0 ||
+    calcMasonryArea(space.block10) > 0 ||
+    calcMasonryArea(space.demolition) > 0 ||
+    safeNum(space.extraPlaster) > 0;
+  const openingsCount = space.doors.length + space.windows.length;
+  const extraCount = space.customItems.length + (space.note.trim() ? 1 : 0);
 
   useEffect(() => {
     if (expandSignal) {
@@ -357,23 +361,23 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
 
       {/* Expanded Space Form */}
       {expanded && (
-        <div className="border-t border-slate-800/80 px-4 py-5 space-y-6">
-          {/* 1. Space Name, Identical Multiplier, and Note */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-5 flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-slate-400">رقم أو اسم الفراغ</label>
+        <div className="border-t border-slate-800/80 px-3.5 sm:px-4 py-4 space-y-4">
+          {/* 1. Space Name & Identical Multiplier (Compact Mobile Row) */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            <div className="sm:col-span-7 flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-400">اسم الفراغ</label>
               <input
                 type="text"
                 value={space.name}
                 onChange={(e) => update({ name: e.target.value })}
-                placeholder="مثال: مكتب 101، مهجع شمالي، ممر رئيسي"
+                placeholder="مثال: مكتب 101، مهجع شمالي..."
                 className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm font-medium text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-500/20 outline-none"
               />
             </div>
 
-            <div className="md:col-span-3 flex flex-col gap-1.5">
+            <div className="sm:col-span-5 flex flex-col gap-1">
               <label className="text-xs font-medium text-slate-400">
-                عدد الفراغات المتماثلة (المضاعف)
+                العدد المتماثل (المضاعف)
               </label>
               <div className="flex items-center gap-1.5">
                 <button
@@ -400,17 +404,6 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
-            </div>
-
-            <div className="md:col-span-4 flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-slate-400">ملاحظة الفراغ (اختياري)</label>
-              <input
-                type="text"
-                value={space.note}
-                onChange={(e) => update({ note: e.target.value })}
-                placeholder="رطوبة بالسقف، جدار متصدع..."
-                className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-500/20 outline-none"
-              />
             </div>
           </div>
 
@@ -779,107 +772,160 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
             )}
           </div>
 
-          {/* 4. Finishes & Ceiling Controls */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="space-y-2.5">
-              <span className="text-xs font-medium text-slate-400 block">
-                تشطيبات الأرضيات والجدران
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { key: 'floorGrinding' as const, label: 'جلي أرضيات' },
-                  { key: 'floorCeramic' as const, label: 'أرضيات سيراميك' },
-                  { key: 'wallPaint' as const, label: 'دهان جدران' },
-                  { key: 'wallCeramic' as const, label: 'سيراميك جدران' },
-                  { key: 'wallFullPlaster' as const, label: 'طينة كامل الجدران' },
-                ].map((toggle) => {
-                  const active = space[toggle.key];
-                  return (
-                    <button
-                      key={toggle.key}
-                      type="button"
-                      onClick={() => update({ [toggle.key]: !active })}
-                      className={`min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap ${
-                        active
-                          ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-300'
-                          : 'bg-[#0b0f19] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      {toggle.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2.5">
-              <span className="text-xs font-medium text-slate-400 block">
-                نوع السقف (يعتمد مساحة الأرضية)
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {CEILING_LIST.map((ct) => {
-                  const active = space.ceilingType === ct;
-                  return (
-                    <button
-                      key={ct}
-                      type="button"
-                      onClick={() => update({ ceilingType: ct })}
-                      className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap ${
-                        active
-                          ? 'bg-cyan-500/15 border-cyan-400/60 text-cyan-300'
-                          : 'bg-[#0b0f19] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      {CEILING_TYPE_LABELS[ct]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Sink Input (auto-revealed for Buffet/Kitchen, also toggleable) */}
-          {showSinkInput ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end rounded-xl bg-cyan-500/5 border border-cyan-500/30 p-3.5">
-              <NumericInput
-                label="طول المجلى (بوفيه / مطبخ)"
-                value={space.sinkLength}
-                onChange={(v) => update({ sinkLength: v })}
-                unit="م.ط"
-                accent="cyan"
-              />
-              <div className="sm:col-span-2 flex items-center justify-between gap-2 text-xs text-slate-400 pb-2">
-                <span>
-                  إجمالي المجلى المحسوب:{' '}
-                  <strong className="font-num text-cyan-300">{formatNum(calc.boq.sink)}</strong>{' '}
-                  م.ط
-                </span>
-                {space.spaceType !== 'buffet_kitchen' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSinkManuallyShown(false);
-                      update({ sinkLength: 0 });
-                    }}
-                    className="text-xs text-slate-500 hover:text-rose-400 transition-colors"
-                  >
-                    إخفاء المجلى
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
+          {/* Quick Inner Section Tabs (Fast Mobile Navigation — 1 tap to any section) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-xl bg-[#0b0f19] border border-slate-800 p-1">
             <button
               type="button"
-              onClick={() => setSinkManuallyShown(true)}
-              className="text-xs font-medium text-slate-400 hover:text-cyan-300 transition-colors"
+              onClick={() => setActiveSection('finishes')}
+              className={`min-h-[40px] px-2.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                activeSection === 'finishes'
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
             >
-              + إضافة طول مجلى (م.ط) لهذا الفراغ
+              التشطيبات والأسقف
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('openings')}
+              className={`min-h-[40px] px-2.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                activeSection === 'openings'
+                  ? 'bg-cyan-500/20 text-cyan-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              أبواب وشبابيك ({openingsCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('masonry')}
+              className={`min-h-[40px] px-2.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                activeSection === 'masonry'
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              بلوك وطينة{hasMasonryData ? ' ·' : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('extra')}
+              className={`min-h-[40px] px-2.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                activeSection === 'extra'
+                  ? 'bg-cyan-500/20 text-cyan-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              إضافي وملاحظات{extraCount > 0 ? ` (${extraCount})` : ''}
+            </button>
+          </div>
+
+          {/* SECTION 1: Finishes, Ceiling & Sink */}
+          {activeSection === 'finishes' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-slate-400 block">
+                    تشطيبات الأرضيات والجدران
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'floorGrinding' as const, label: 'جلي أرضيات' },
+                      { key: 'floorCeramic' as const, label: 'أرضيات سيراميك' },
+                      { key: 'wallPaint' as const, label: 'دهان جدران' },
+                      { key: 'wallCeramic' as const, label: 'سيراميك جدران' },
+                      { key: 'wallFullPlaster' as const, label: 'طينة كامل الجدران' },
+                    ].map((toggle) => {
+                      const active = space[toggle.key];
+                      return (
+                        <button
+                          key={toggle.key}
+                          type="button"
+                          onClick={() => update({ [toggle.key]: !active })}
+                          className={`min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap ${
+                            active
+                              ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-300'
+                              : 'bg-[#0b0f19] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                          }`}
+                        >
+                          {toggle.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-slate-400 block">
+                    نوع السقف (يعتمد مساحة الأرضية)
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {CEILING_LIST.map((ct) => {
+                      const active = space.ceilingType === ct;
+                      return (
+                        <button
+                          key={ct}
+                          type="button"
+                          onClick={() => update({ ceilingType: ct })}
+                          className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap ${
+                            active
+                              ? 'bg-cyan-500/15 border-cyan-400/60 text-cyan-300'
+                              : 'bg-[#0b0f19] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                          }`}
+                        >
+                          {CEILING_TYPE_LABELS[ct]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sink Input (auto-revealed for Buffet/Kitchen, also toggleable) */}
+              {showSinkInput ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end rounded-xl bg-cyan-500/5 border border-cyan-500/30 p-3.5">
+                  <NumericInput
+                    label="طول المجلى (بوفيه / مطبخ)"
+                    value={space.sinkLength}
+                    onChange={(v) => update({ sinkLength: v })}
+                    unit="م.ط"
+                    accent="cyan"
+                  />
+                  <div className="sm:col-span-2 flex items-center justify-between gap-2 text-xs text-slate-400 pb-2">
+                    <span>
+                      إجمالي المجلى المحسوب:{' '}
+                      <strong className="font-num text-cyan-300">{formatNum(calc.boq.sink)}</strong>{' '}
+                      م.ط
+                    </span>
+                    {space.spaceType !== 'buffet_kitchen' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSinkManuallyShown(false);
+                          update({ sinkLength: 0 });
+                        }}
+                        className="text-xs text-slate-500 hover:text-rose-400 transition-colors"
+                      >
+                        إخفاء المجلى
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSinkManuallyShown(true)}
+                  className="text-xs font-medium text-slate-400 hover:text-cyan-300 transition-colors"
+                >
+                  + إضافة طول مجلى (م.ط) لهذا الفراغ
+                </button>
+              )}
+            </div>
           )}
 
-          {/* 5. Openings: Doors & Windows (Single-Entry & Auto-Deduction) */}
-          <div className="pt-4 border-t border-slate-800/80 grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {/* SECTION 2: Openings — Doors & Windows */}
+          {activeSection === 'openings' && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             {/* Doors */}
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -1162,40 +1208,30 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
               )}
             </div>
           </div>
+          )}
 
-          {/* 6. Masonry, Plastering (Auto 2x Link), & Demolition */}
-          <div className="pt-4 border-t border-slate-800/80">
-            <button
-              type="button"
-              onClick={() => setShowMasonry((p) => !p)}
-              className="flex w-full items-center justify-between gap-2 text-right py-1"
-            >
+          {/* SECTION 3: Masonry, Plastering (Auto 2x Link), & Demolition */}
+          {activeSection === 'masonry' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Hammer className="h-4 w-4 text-emerald-400" />
                 <span className="text-sm font-semibold text-slate-200">
-                  بناء البلوك (20 / 15 / 10)، الطينة التلقائية (×2)، وهدم البلوك
+                  بناء البلوك، الطينة التلقائية (×2)، والهدم
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                {calc.boq.plaster > 0 && (
-                  <span>
-                    طينة:{' '}
-                    <strong className="font-num text-emerald-400">
-                      {formatNum(calc.boq.plaster)}
-                    </strong>{' '}
-                    م²
-                  </span>
-                )}
-                {showMasonry ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </div>
-            </button>
+              {calc.boq.plaster > 0 && (
+                <span className="text-xs text-slate-400">
+                  إجمالي الطينة:{' '}
+                  <strong className="font-num text-emerald-400">
+                    {formatNum(calc.boq.plaster)}
+                  </strong>{' '}
+                  م²
+                </span>
+              )}
+            </div>
 
-            {showMasonry && (
-              <div className="mt-4 space-y-4">
+            <div className="space-y-4">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
                   {(
                     [
@@ -1384,37 +1420,69 @@ export const SpaceEditorCard: React.FC<SpaceEditorCardProps> = ({
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* 7. Quick Contingency Items */}
-          <CustomItemsSection
-            items={space.customItems}
-            onChange={(next) => update({ customItems: next })}
-            multiplier={mult}
-          />
-
-          {/* 8. Live Computed BOQ Strip for this Space */}
-          {activeSummaryItems.length > 0 && (
-            <div className="pt-4 border-t border-slate-800/80">
-              <div className="text-xs font-medium text-slate-400 mb-2">
-                ملخص الكميات المحسوبة لهذا الفراغ {mult > 1 ? `(بعد الضرب ×${mult})` : ''}
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                {activeSummaryItems.map((it) => (
-                  <div
-                    key={it.label}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-[#0b0f19] border border-slate-800/80 px-2.5 py-2 text-xs"
-                  >
-                    <span className="text-slate-400 truncate">{it.label}</span>
-                    <span className="font-num font-semibold text-emerald-300 shrink-0">
-                      {it.val} <span className="text-[10px] text-slate-500">{it.unit}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
+
+          {/* SECTION 4: Space Note, Quick Contingency Items & Live Space Summary */}
+          {activeSection === 'extra' && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-slate-400">
+                  ملاحظة الفراغ (اختياري)
+                </label>
+                <input
+                  type="text"
+                  value={space.note}
+                  onChange={(e) => update({ note: e.target.value })}
+                  placeholder="رطوبة بالسقف، جدار متصدع، ملاحظات تنفيذية..."
+                  className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 outline-none"
+                />
+              </div>
+
+              <CustomItemsSection
+                items={space.customItems}
+                onChange={(next) => update({ customItems: next })}
+                multiplier={mult}
+              />
+
+              {activeSummaryItems.length > 0 && (
+                <div className="pt-3 border-t border-slate-800/80">
+                  <div className="text-xs font-medium text-slate-400 mb-2">
+                    ملخص الكميات المحسوبة لهذا الفراغ {mult > 1 ? `(×${mult})` : ''}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                    {activeSummaryItems.map((it) => (
+                      <div
+                        key={it.label}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-[#0b0f19] border border-slate-800/80 px-2.5 py-2 text-xs"
+                      >
+                        <span className="text-slate-400 truncate">{it.label}</span>
+                        <span className="font-num font-semibold text-emerald-300 shrink-0">
+                          {it.val} <span className="text-[10px] text-slate-500">{it.unit}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Quick Bottom Bar inside Space Card: Active Count + 1-Tap Fold */}
+          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span className="text-xs text-slate-400">
+              <strong className="font-num text-emerald-400">{activeSummaryItems.length}</strong>{' '}
+              بنود محسوبة
+            </span>
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="inline-flex items-center gap-1.5 min-h-[38px] px-4 rounded-xl border border-slate-700 bg-[#0b0f19] hover:border-emerald-500/40 hover:text-emerald-300 text-xs font-semibold text-slate-200 transition-colors whitespace-nowrap"
+            >
+              <ChevronUp className="h-4 w-4" />
+              <span>تم — طي الفراغ</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

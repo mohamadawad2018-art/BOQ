@@ -166,13 +166,14 @@ export interface Project {
 export interface TrashItem {
   id: string;
   deletedAt: string;
-  kind: 'block' | 'space';
+  kind: 'project' | 'block' | 'space';
   projectId: string;
+  projectName?: string;
   blockId?: string;
   blockName: string;
   floorId?: string;
   floorName?: string;
-  data: Block | Space;
+  data: Project | Block | Space;
 }
 
 export interface AppWorkspaceState {

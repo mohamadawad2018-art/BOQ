@@ -1,6 +1,6 @@
 import React from 'react';
-import { Building2, DoorOpen, RotateCcw, Trash2, X } from 'lucide-react';
-import { Block, Space, TrashItem } from '../types/boq';
+import { Archive, Building2, DoorOpen, RotateCcw, Trash2, X } from 'lucide-react';
+import { Block, Project, Space, TrashItem } from '../types/boq';
 
 interface TrashDrawerProps {
   open: boolean;
@@ -34,7 +34,7 @@ export const TrashDrawer: React.FC<TrashDrawerProps> = ({
               سلة المحذوفات / التراجع ({items.length})
             </h3>
             <p className="text-xs text-slate-400">
-              يمكنك استعادة أي بناء أو فراغ محذوف بنقرة واحدة
+              يمكنك استعادة أي مشروع أو بناء أو فراغ محذوف بنقرة واحدة
             </p>
           </div>
           <button
@@ -53,13 +53,15 @@ export const TrashDrawer: React.FC<TrashDrawerProps> = ({
               <Trash2 className="mx-auto h-8 w-8 text-slate-600" />
               <p className="mt-3 text-sm font-medium text-slate-300">سلة المحذوفات فارغة</p>
               <p className="mt-1 text-xs text-slate-500">
-                أي بناء أو فراغ يتم حذفه سيُحفظ هنا مؤقتاً للحماية من الحذف غير المقصود.
+                أي مشروع أو بناء أو فراغ يتم حذفه سيُحفظ هنا مؤقتاً للحماية من الحذف غير المقصود.
               </p>
             </div>
           ) : (
             items.map((item) => {
               const title =
-                item.kind === 'block'
+                item.kind === 'project'
+                  ? (item.data as Project).name || item.projectName || 'مشروع بدون اسم'
+                  : item.kind === 'block'
                   ? (item.data as Block).name || 'بناء بدون اسم'
                   : (item.data as Space).name || 'فراغ بدون اسم';
               const deletedTime = new Date(item.deletedAt).toLocaleString('ar-EG', {
@@ -75,8 +77,14 @@ export const TrashDrawer: React.FC<TrashDrawerProps> = ({
                   className="rounded-xl bg-[#0b0f19] border border-slate-800 p-4 space-y-3"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-800/80 text-cyan-400">
-                      {item.kind === 'block' ? (
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-800/80 ${
+                        item.kind === 'project' ? 'text-emerald-400' : 'text-cyan-400'
+                      }`}
+                    >
+                      {item.kind === 'project' ? (
+                        <Archive className="h-4 w-4" />
+                      ) : item.kind === 'block' ? (
                         <Building2 className="h-4 w-4" />
                       ) : (
                         <DoorOpen className="h-4 w-4" />
@@ -85,7 +93,9 @@ export const TrashDrawer: React.FC<TrashDrawerProps> = ({
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-slate-100 truncate">{title}</div>
                       <div className="mt-0.5 text-xs text-slate-400">
-                        {item.kind === 'block'
+                        {item.kind === 'project'
+                          ? `مشروع كامل (${(item.data as Project).blocks?.length || 0} أبنية)`
+                          : item.kind === 'block'
                           ? 'كتلة / بناء كامل'
                           : `فراغ داخل ${item.blockName} · ${item.floorName || ''}`}
                       </div>

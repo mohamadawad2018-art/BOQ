@@ -270,11 +270,11 @@ export const ProjectsRegistryView: React.FC<ProjectsRegistryViewProps> = ({
                   </div>
 
                   {/* Mobile-Friendly Action Row */}
-                  <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800/80">
+                  <div className="space-y-2 pt-3 border-t border-slate-800/80">
                     <button
                       type="button"
                       onClick={() => onOpenProject(project.id)}
-                      className={`flex-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
+                      className={`w-full inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
                         isCurrent
                           ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
                           : 'bg-emerald-600 hover:bg-emerald-500 text-white'
@@ -284,37 +284,37 @@ export const ProjectsRegistryView: React.FC<ProjectsRegistryViewProps> = ({
                       <span>{isCurrent ? 'متابعة التعديل' : 'فتح وتعديل المشروع'}</span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => onExportProjectExcel(project)}
-                      title="تصدير ملف Excel لهذا المشروع"
-                      className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3.5 rounded-xl border border-slate-800 bg-[#0b0f19] text-xs font-semibold text-cyan-300 hover:border-cyan-500/40 hover:bg-cyan-500/10 transition-colors whitespace-nowrap"
-                    >
-                      <FileSpreadsheet className="h-4 w-4" />
-                      <span>Excel</span>
-                    </button>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onExportProjectExcel(project)}
+                        title="تصدير ملف Excel لهذا المشروع"
+                        className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-2.5 rounded-xl border border-slate-800 bg-[#0b0f19] text-xs font-semibold text-cyan-300 hover:border-cyan-500/40 hover:bg-cyan-500/10 transition-colors whitespace-nowrap"
+                      >
+                        <FileSpreadsheet className="h-4 w-4 shrink-0" />
+                        <span>Excel</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => onCloneProject(project)}
-                      title="نسخ كمشروع جديد"
-                      className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-[#0b0f19] text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors"
-                      aria-label="نسخ كمشروع جديد"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => onCloneProject(project)}
+                        title="نسخ كمشروع جديد"
+                        className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-2.5 rounded-xl border border-slate-800 bg-[#0b0f19] text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
+                      >
+                        <Copy className="h-4 w-4 shrink-0" />
+                        <span>نسخ</span>
+                      </button>
 
-                    {projects.length > 1 && (
                       <button
                         type="button"
                         onClick={() => onDeleteProject(project)}
                         title="حذف المشروع من السجل"
-                        className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-[#0b0f19] text-slate-400 hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400 transition-colors"
-                        aria-label="حذف المشروع"
+                        className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-2.5 rounded-xl border border-rose-500/35 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/20 hover:text-rose-200 transition-colors whitespace-nowrap"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 shrink-0" />
+                        <span>حذف</span>
                       </button>
-                    )}
+                    </div>
                   </div>
                 </article>
               );

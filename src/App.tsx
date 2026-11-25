@@ -7,9 +7,11 @@ import {
   ChevronUp,
   ClipboardList,
   Download,
+  Edit3,
   FileSpreadsheet,
   Plus,
   RotateCcw,
+  Settings2,
   Table2,
   Trash2,
   Upload,
@@ -51,7 +53,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('survey');
   const [trashOpen, setTrashOpen] = useState(false);
   const [resetModalOpen, setResetModalOpen] = useState(false);
-  const [notesExpanded, setNotesExpanded] = useState(false);
+  const [projectInfoExpanded, setProjectInfoExpanded] = useState(() => {
+    const initial = workspace.projects.find((p) => p.id === workspace.activeProjectId) || workspace.projects[0];
+    return !initial?.name?.trim();
+  });
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [ownerLoginOpen, setOwnerLoginOpen] = useState(false);
@@ -229,26 +235,52 @@ export default function App() {
   };
 
   const handleRequestDeleteProject = (targetProject: Project) => {
-    if (workspace.projects.length <= 1) return;
+    const isLastProject = workspace.projects.length <= 1;
+    const projectLabel = targetProject.name.trim() || 'بدون اسم';
     setConfirmState({
       open: true,
-      title: `حذف المشروع "${targetProject.name || 'بدون اسم'}" من السجل؟`,
-      message:
-        'سيتم حذف هذا المشروع نهائياً من الجهاز. يُنصح بتحميل نسخة احتياطية JSON قبل الحذف إذا كنت ستحتاجه لاحقاً.',
-      confirmLabel: 'حذف المشروع نهائياً',
+      title: `حذف المشروع "${projectLabel}" من السجل؟`,
+      message: isLastProject
+        ? 'سيتم نقل هذا المشروع إلى سلة المحذوفات وفتح مشروع فارغ جديد، ويمكنك استعادة المشروع المحذوف من السلة في أي وقت.'
+        : 'سيتم حذف هذا المشروع من سجل المشاريع ونقله إلى سلة المحذوفات، ويمكنك استعادته لاحقاً أو حذفه نهائياً من السلة.',
+      confirmLabel: 'تأكيد حذف المشروع',
       onConfirm: () => {
+        const trashItem: TrashItem = {
+          id: createId('tr'),
+          deletedAt: new Date().toISOString(),
+          kind: 'project',
+          projectId: targetProject.id,
+          projectName: projectLabel,
+          blockName: '',
+          data: targetProject,
+        };
         setWorkspace((prev) => {
           const remaining = prev.projects.filter((p) => p.id !== targetProject.id);
+          if (remaining.length === 0) {
+            const fresh = createBlankProject('');
+            return {
+              ...prev,
+              projects: [fresh],
+              activeProjectId: fresh.id,
+              trash: [trashItem, ...prev.trash],
+            };
+          }
           const nextActive =
             prev.activeProjectId === targetProject.id ? remaining[0].id : prev.activeProjectId;
           return {
             ...prev,
             projects: remaining,
             activeProjectId: nextActive,
+            trash: [trashItem, ...prev.trash],
           };
         });
         setConfirmState(null);
-        showToast('تم حذف المشروع من السجل');
+        showToast(
+          isLastProject
+            ? `تم حذف المشروع "${projectLabel}" وفتح مشروع فارغ جديد`
+            : `تم حذف المشروع "${projectLabel}" ونقله إلى سلة المحذوفات`,
+          trashItem
+        );
       },
     });
   };
@@ -481,6 +513,27 @@ export default function App() {
   // =========================================================================
   const handleRestoreTrashItem = (item: TrashItem) => {
     setWorkspace((prev) => {
+      if (item.kind === 'project') {
+        const restoredProject = item.data as Project;
+        const alreadyExists = prev.projects.some((p) => p.id === restoredProject.id);
+        const restoredCopy: Project = alreadyExists
+          ? {
+              ...restoredProject,
+              id: createId('prj'),
+              updatedAt: new Date().toISOString(),
+            }
+          : {
+              ...restoredProject,
+              updatedAt: new Date().toISOString(),
+            };
+        return {
+          ...prev,
+          projects: [restoredCopy, ...prev.projects],
+          activeProjectId: restoredCopy.id,
+          trash: prev.trash.filter((t) => t.id !== item.id),
+        };
+      }
+
       const targetProjExists = prev.projects.some((p) => p.id === item.projectId);
       const targetProjId = targetProjExists ? item.projectId : prev.activeProjectId;
 
@@ -715,160 +768,180 @@ export default function App() {
           />
         )}
 
-        {/* Mobile & Desktop Quick Control Bar (Projects Registry, Reset/New, Backups, Install) */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setResetModalOpen(true)}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[44px] rounded-xl border border-emerald-500/45 bg-emerald-500/12 px-3.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span>تصفير / مشروع جديد</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('registry')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[44px] rounded-xl border px-3.5 text-xs font-semibold transition-colors whitespace-nowrap ${
-                activeTab === 'registry'
-                  ? 'border-cyan-400/60 bg-cyan-500/15 text-cyan-300'
-                  : 'border-slate-800 bg-[#111827] text-slate-200 hover:border-cyan-500/40 hover:text-cyan-300'
-              }`}
-            >
-              <Archive className="h-4 w-4 text-cyan-400" />
-              <span>سجل المشاريع ({workspace.projects.length})</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-            <PWAInstallButton />
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleExportJSON}
-                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl bg-[#111827] border border-slate-800 px-3 text-xs font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>نسخة JSON</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => importInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl bg-[#111827] border border-slate-800 px-3 text-xs font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                <span>استيراد JSON</span>
-              </button>
-              <input
-                ref={importInputRef}
-                type="file"
-                accept=".json,application/json"
-                onChange={handleImportJSONFile}
-                className="hidden"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Project / Site Level Info (shown in Survey, Summary, Pricing; hidden in Registry for full screen focus) */}
+        {/* Compact Mobile-First Project & Quick Actions Bar */}
         {activeTab !== 'registry' && (
-          <section className="rounded-2xl bg-[#111827] border border-slate-800/90 p-4 sm:p-5 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-              <div className="md:col-span-5 flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-400">اسم المشروع</label>
-                <input
-                  type="text"
-                  value={activeProject.name}
-                  onChange={(e) =>
-                    updateActiveProject((p) => ({ ...p, name: e.target.value }))
-                  }
-                  placeholder="أدخل اسم المشروع الجديد..."
-                  className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm font-semibold text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                />
-              </div>
-
-              <div className="md:col-span-4 flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-400">عنوان الموقع</label>
-                <input
-                  type="text"
-                  value={activeProject.location}
-                  onChange={(e) =>
-                    updateActiveProject((p) => ({ ...p, location: e.target.value }))
-                  }
-                  placeholder="المدينة / المنطقة / القطاع"
-                  className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                />
-              </div>
-
-              <div className="md:col-span-3 flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-400">التاريخ</label>
-                <input
-                  type="date"
-                  value={activeProject.date}
-                  onChange={(e) =>
-                    updateActiveProject((p) => ({ ...p, date: e.target.value }))
-                  }
-                  className="font-num w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm text-slate-100 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Expandable Site-Wide General Notes */}
-            <div className="pt-2 border-t border-slate-800/80">
+          <section className="rounded-2xl bg-[#111827] border border-slate-800/90 overflow-hidden">
+            {/* Always-visible 1-row summary bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 sm:px-5 py-3">
               <button
                 type="button"
-                onClick={() => setNotesExpanded((v) => !v)}
-                className="flex w-full items-center justify-between gap-2 py-1 text-right"
+                onClick={() => setProjectInfoExpanded((v) => !v)}
+                className="flex flex-1 min-w-[180px] items-center gap-2.5 text-right focus-visible:outline-none group"
               >
-                <span className="text-xs font-semibold text-cyan-400">
-                  ملاحظات عامة للموقع ككل{' '}
-                  {activeProject.generalNotes.trim() ? '· (مسجّلة)' : ''}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
+                  <Edit3 className="h-4 w-4" />
                 </span>
-                <span className="text-slate-400">
-                  {notesExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm sm:text-base font-bold text-slate-100 truncate group-hover:text-emerald-300 transition-colors">
+                      {activeProject.name.trim() || 'مشروع جديد (اضغط لإدخال الاسم)'}
+                    </span>
+                    {projectInfoExpanded ? (
+                      <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-slate-400">
+                    <span>{activeProject.location.trim() || 'بدون موقع'}</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-num">{activeProject.date}</span>
+                    {activeProject.generalNotes.trim() && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span className="text-cyan-400">توجد ملاحظات</span>
+                      </>
+                    )}
+                  </div>
+                </div>
               </button>
-              {notesExpanded && (
-                <textarea
-                  rows={2}
-                  value={activeProject.generalNotes}
-                  onChange={(e) =>
-                    updateActiveProject((p) => ({ ...p, generalNotes: e.target.value }))
-                  }
-                  placeholder="ظروف الوصول للموقع، حالة البنية التحتية، أو أي توصيات هندسية عامة للمشروع..."
-                  className="mt-2 w-full rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-400/70 focus:ring-2 focus:ring-cyan-500/20 outline-none resize-y"
-                />
-              )}
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setResetModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl border border-emerald-500/40 bg-emerald-500/12 px-3 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>مشروع جديد</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setToolsExpanded((v) => !v)}
+                  aria-label="نسخ احتياطي وأدوات"
+                  title="نسخ احتياطي وأدوات"
+                  className={`inline-flex items-center gap-1.5 min-h-[40px] rounded-xl border px-3 text-xs font-semibold transition-colors whitespace-nowrap ${
+                    toolsExpanded
+                      ? 'border-cyan-400/60 bg-cyan-500/15 text-cyan-300'
+                      : 'border-slate-800 bg-[#0b0f19] text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <Settings2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">أدوات</span>
+                </button>
+              </div>
             </div>
+
+            {/* Collapsible Backup & Install Tools Strip */}
+            {toolsExpanded && (
+              <div className="border-t border-slate-800/80 bg-[#0b0f19]/60 px-3.5 sm:px-5 py-2.5 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportJSON}
+                  className="inline-flex items-center gap-1.5 min-h-[38px] rounded-xl bg-[#111827] border border-slate-800 px-3 text-xs font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>حفظ نسخة JSON</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => importInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 min-h-[38px] rounded-xl bg-[#111827] border border-slate-800 px-3 text-xs font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors whitespace-nowrap"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>استيراد JSON</span>
+                </button>
+
+                <PWAInstallButton />
+              </div>
+            )}
+
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportJSONFile}
+              className="hidden"
+            />
+
+            {/* Collapsible Project Details Editor */}
+            {projectInfoExpanded && (
+              <div className="border-t border-slate-800/80 px-3.5 sm:px-5 py-4 space-y-3.5">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  <div className="md:col-span-5 flex flex-col gap-1">
+                    <label className="text-xs font-medium text-slate-400">اسم المشروع</label>
+                    <input
+                      type="text"
+                      value={activeProject.name}
+                      onChange={(e) =>
+                        updateActiveProject((p) => ({ ...p, name: e.target.value }))
+                      }
+                      placeholder="أدخل اسم المشروع..."
+                      className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm font-semibold text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 outline-none"
+                    />
+                  </div>
+
+                  <div className="md:col-span-4 flex flex-col gap-1">
+                    <label className="text-xs font-medium text-slate-400">عنوان الموقع</label>
+                    <input
+                      type="text"
+                      value={activeProject.location}
+                      onChange={(e) =>
+                        updateActiveProject((p) => ({ ...p, location: e.target.value }))
+                      }
+                      placeholder="المدينة / المنطقة"
+                      className="w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400/70 outline-none"
+                    />
+                  </div>
+
+                  <div className="md:col-span-3 flex flex-col gap-1">
+                    <label className="text-xs font-medium text-slate-400">التاريخ</label>
+                    <input
+                      type="date"
+                      value={activeProject.date}
+                      onChange={(e) =>
+                        updateActiveProject((p) => ({ ...p, date: e.target.value }))
+                      }
+                      className="font-num w-full min-h-[44px] rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 text-sm text-slate-100 focus:border-emerald-400/70 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-cyan-400">
+                    ملاحظات عامة للموقع ككل (اختياري)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={activeProject.generalNotes}
+                    onChange={(e) =>
+                      updateActiveProject((p) => ({ ...p, generalNotes: e.target.value }))
+                    }
+                    placeholder="ظروف الوصول للموقع أو ملاحظات هندسية عامة..."
+                    className="w-full rounded-xl bg-[#0b0f19] border border-slate-700/80 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-400/70 outline-none resize-y"
+                  />
+                </div>
+              </div>
+            )}
           </section>
         )}
 
         {/* Active View */}
         {activeTab === 'survey' && (
-          <div className="space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h1 className="text-lg font-bold text-slate-100">
-                  الكتل والأبنية ({activeProject.blocks.length})
-                </h1>
-                <p className="text-xs text-slate-400">
-                  الحفظ تلقائي على الجهاز — جميع تعديلاتك محفوظة ويمكن الرجوع لأي مشروع من «سجل المشاريع»
-                </p>
-              </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-100">
+                الأبنية والكتل ({activeProject.blocks.length})
+              </h1>
               <button
                 type="button"
                 onClick={handleAddBlock}
-                className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 min-h-[42px] px-3.5 rounded-xl border border-emerald-500/40 bg-emerald-500/12 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
               >
                 <Plus className="h-4 w-4" />
-                <span>إضافة بناء / كتلة</span>
+                <span>إضافة بناء</span>
               </button>
             </div>
 
