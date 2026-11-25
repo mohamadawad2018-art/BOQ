@@ -2,38 +2,196 @@
   "entities": {
     "AccessControl": {
       "title": "AccessControl",
-      "description": "Global application availability switch controlled exclusively by the verified application owner.",
+      "description": "Global application availability, copyright signature, and offline-verifiable hashed passcode policy controlled exclusively by the verified owner.",
       "type": "object",
       "properties": {
         "isActive": {
           "type": "boolean",
-          "description": "Whether the shared application is currently active for all users."
+          "description": "Whether the shared application is currently active for non-owner users."
         },
         "pauseMessage": {
           "type": "string",
           "maxLength": 300,
           "description": "Arabic message displayed to shared-link users when the application is paused."
         },
+        "ownerSignature": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Intellectual property and copyright attribution displayed across the app, lock screen, and Excel exports."
+        },
+        "passcodeEnabled": {
+          "type": "boolean",
+          "description": "Whether users must enter a valid passcode on every app open (works both online and offline)."
+        },
+        "passcodeSalt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Random hex salt for PBKDF2-SHA256 verification of the global master passcode (empty if unset)."
+        },
+        "passcodeHash": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "PBKDF2-SHA256 hex digest of the global master passcode (never plaintext)."
+        },
+        "passcodeVersion": {
+          "type": "integer",
+          "description": "Monotonically increasing session version incremented to immediately lock and revoke all active sessions."
+        },
         "updatedBy": {
           "type": "string",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$",
-          "description": "UID of the verified owner who last updated the switch."
+          "description": "UID of the verified owner who last updated the policy."
         },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server timestamp of the last status change."
+          "description": "Server timestamp of the last status or security change."
         }
       },
-      "required": ["isActive", "pauseMessage", "updatedBy", "updatedAt"]
+      "required": [
+        "isActive",
+        "pauseMessage",
+        "ownerSignature",
+        "passcodeEnabled",
+        "passcodeSalt",
+        "passcodeHash",
+        "passcodeVersion",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
+    "OwnerAccessKey": {
+      "title": "OwnerAccessKey",
+      "description": "Owner-private registry of named personal access keys (strictly isolated from public reads so labels/names never leak).",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Human-readable name or site tag of the authorized user (visible to owner only)."
+        },
+        "passLookupId": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[a-f0-9]+$",
+          "description": "32-character hex SHA-256 lookup ID referencing /access_passes/{passLookupId}."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether this individual user access key is currently active."
+        },
+        "expiresAt": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^(|[0-9]{4}-[0-9]{2}-[0-9]{2})$",
+          "description": "Optional YYYY-MM-DD expiration date (empty string for no expiry)."
+        },
+        "version": {
+          "type": "integer",
+          "description": "Access policy version at key issuance."
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable UID of the owner who created this key."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp of key creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last modification."
+        }
+      },
+      "required": [
+        "label",
+        "passLookupId",
+        "active",
+        "expiresAt",
+        "version",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AccessPass": {
+      "title": "AccessPass",
+      "description": "Zero-PII blind-lookup verification record for an individual access code (single-doc get only; collection listing is strictly forbidden).",
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": "boolean",
+          "description": "Whether this pass is currently active."
+        },
+        "expiresAt": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^(|[0-9]{4}-[0-9]{2}-[0-9]{2})$",
+          "description": "Optional YYYY-MM-DD expiration date."
+        },
+        "version": {
+          "type": "integer",
+          "description": "Policy version for this pass."
+        },
+        "verifySalt": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]+$",
+          "description": "Random hex salt for PBKDF2-SHA256 verification."
+        },
+        "verifyHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 128,
+          "pattern": "^[a-f0-9]+$",
+          "description": "PBKDF2-SHA256 hex digest of the personal access code."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the verified owner who last updated this pass."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "active",
+        "expiresAt",
+        "version",
+        "verifySalt",
+        "verifyHash",
+        "updatedBy",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
     "/app_config/{docId}": {
       "schema": { "$ref": "#/entities/AccessControl" },
-      "description": "Single-document global access control state (/app_config/access_control). Public get for real-time lock enforcement; strictly owner-only create/update."
+      "description": "Single-document global access control, copyright attribution, and hashed master passcode (/app_config/access_control). Public get for real-time & offline cache sync; strictly owner-only create/update."
+    },
+    "/owner_access_keys/{keyId}": {
+      "schema": { "$ref": "#/entities/OwnerAccessKey" },
+      "description": "Owner-only private registry of named per-user access keys. Completely isolated from public reads."
+    },
+    "/access_passes/{passLookupId}": {
+      "schema": { "$ref": "#/entities/AccessPass" },
+      "description": "Blind-lookup salted verification record keyed by SHA-256(code). Single-doc get only (list strictly forbidden); owner-only write/delete."
     }
   }
 }

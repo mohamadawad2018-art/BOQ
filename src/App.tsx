@@ -9,6 +9,7 @@ import {
   Download,
   Edit3,
   FileSpreadsheet,
+  Lock,
   Plus,
   RotateCcw,
   Settings2,
@@ -20,6 +21,7 @@ import { BlockCard } from './components/BlockCard';
 import { BOQSummaryView } from './components/BOQSummaryView';
 import { ConfirmModal } from './components/NumericInput';
 import {
+  AppPasscodeGate,
   AppPausedScreen,
   OwnerControlBar,
   OwnerLoginModal,
@@ -33,8 +35,10 @@ import { exportProjectToExcel } from './services/excelExportService';
 import {
   type AppAccessState,
   loadCachedAccessState,
+  type PasscodeVerificationResult,
   subscribeToAccessControl,
   subscribeToOwnerAuth,
+  subscribeToPersonalPassStatus,
 } from './services/firebaseService';
 import { createBlankProject, createNewBlock, storageService } from './services/storageService';
 import { AppWorkspaceState, Block, Floor, Project, Space, TrashItem } from './types/boq';
@@ -62,6 +66,13 @@ export default function App() {
   const [isOwner, setIsOwner] = useState(false);
   const [ownerLoginOpen, setOwnerLoginOpen] = useState(false);
   const [accessState, setAccessState] = useState<AppAccessState>(() => loadCachedAccessState());
+  // In-memory only: every fresh open (online OR offline) requires passcode when enabled
+  const [unlockedSession, setUnlockedSession] = useState<{
+    mode: 'global' | 'personal';
+    version: number;
+    passLookupId?: string;
+  } | null>(null);
+  const [revokedNotice, setRevokedNotice] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -99,6 +110,26 @@ export default function App() {
       unsubAccess();
     };
   }, []);
+
+  // Immediately lock active sessions whenever owner bumps passcodeVersion or rotates master password
+  useEffect(() => {
+    if (!unlockedSession) return;
+    if (accessState.passcodeVersion > unlockedSession.version) {
+      setUnlockedSession(null);
+      setRevokedNotice('تم تحديث كلمة السر أو إغلاق الجلسات من قِبل المالك — أدخل الرمز مجدداً.');
+    }
+  }, [accessState.passcodeVersion, unlockedSession]);
+
+  // Live listener for personal access key revocation (instant kick-out when online)
+  useEffect(() => {
+    if (!unlockedSession || unlockedSession.mode !== 'personal' || !unlockedSession.passLookupId) {
+      return;
+    }
+    return subscribeToPersonalPassStatus(unlockedSession.passLookupId, (reason) => {
+      setUnlockedSession(null);
+      setRevokedNotice(reason);
+    });
+  }, [unlockedSession]);
 
   // Hidden 5-tap gesture on the app title (or lock icon) to open Owner Gate
   const handleSecretOwnerTap = () => {
@@ -651,8 +682,17 @@ export default function App() {
   };
 
   const handleExportProjectExcel = (projectToExport: Project) => {
-    exportProjectToExcel(projectToExport);
+    exportProjectToExcel(projectToExport, accessState.ownerSignature);
     showToast(`تم تصدير ملف Excel المنسّق للمشروع "${projectToExport.name || 'BOQ'}"`);
+  };
+
+  const handlePasscodeUnlocked = (result: PasscodeVerificationResult) => {
+    setRevokedNotice(null);
+    setUnlockedSession({
+      mode: result.mode || 'global',
+      version: accessState.passcodeVersion,
+      passLookupId: result.passLookupId,
+    });
   };
 
   // Enforce real-time remote pause for all non-owner users holding the shared link
@@ -661,7 +701,27 @@ export default function App() {
       <>
         <AppPausedScreen
           message={accessState.pauseMessage}
+          ownerSignature={accessState.ownerSignature}
           onSecretOwnerTrigger={handleSecretOwnerTap}
+        />
+        <OwnerLoginModal
+          open={ownerLoginOpen}
+          onClose={() => setOwnerLoginOpen(false)}
+          onSuccess={() => showToast('تم تفعيل لوحة تحكم المالك على جهازك')}
+        />
+      </>
+    );
+  }
+
+  // Enforce online + offline passcode gate whenever enabled by owner (owner bypasses automatically)
+  if (accessState.passcodeEnabled && !isOwner && !unlockedSession) {
+    return (
+      <>
+        <AppPasscodeGate
+          accessState={accessState}
+          revokedNotice={revokedNotice}
+          onUnlocked={handlePasscodeUnlocked}
+          onOpenOwnerLogin={() => setOwnerLoginOpen(true)}
         />
         <OwnerLoginModal
           open={ownerLoginOpen}
@@ -855,6 +915,20 @@ export default function App() {
                 </button>
 
                 <PWAInstallButton />
+
+                {accessState.passcodeEnabled && !isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUnlockedSession(null);
+                      setRevokedNotice(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 min-h-[38px] rounded-xl bg-amber-500/10 border border-amber-500/35 px-3 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors whitespace-nowrap"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>قفل التطبيق</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -1047,6 +1121,13 @@ export default function App() {
             onOpenResetModal={() => setResetModalOpen(true)}
           />
         )}
+
+        {/* Intellectual Property & Ownership Attribution Footer */}
+        <footer className="pt-4 pb-2 border-t border-slate-800/70 text-center">
+          <p className="text-[11px] font-medium text-slate-500">
+            {accessState.ownerSignature}
+          </p>
+        </footer>
       </main>
 
       {/* Mobile Bottom Navigation Bar (5 thumb-zone destinations, compact height) */}

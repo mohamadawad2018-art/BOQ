@@ -202,8 +202,19 @@ function estimateRowHeight(texts: string[], colChars: number, minHeight = 26): n
   return Math.max(minHeight, Math.min(120, maxLines * 17 + 10));
 }
 
-export function exportProjectToExcel(project: Project): void {
+export function exportProjectToExcel(
+  project: Project,
+  ownerSignature = '© م. محمد عواد — جميع الحقوق محفوظة'
+): void {
   const wb = XLSX.utils.book_new();
+  const cleanSignature = ownerSignature.trim() || '© م. محمد عواد — جميع الحقوق محفوظة';
+  wb.Props = {
+    Title: project.name || 'تقرير حصر الكميات الهندسي (BOQ)',
+    Subject: 'جدول حصر الكميات الهندسي الميداني',
+    Author: cleanSignature,
+    Company: cleanSignature,
+    Comments: `تم الإنشاء عبر تطبيق حصر الكميات الهندسي — ${cleanSignature}`,
+  };
   const customCols = collectProjectCustomColumns(project);
 
   // =========================================================================
@@ -619,6 +630,22 @@ export function exportProjectToExcel(project: Project): void {
   ]);
   ws2Merges.push({ s: { r: siteNoteRowIdx, c: 1 }, e: { r: siteNoteRowIdx, c: ws2TotalCols - 1 } });
   ws2RowHeights.push({ hpt: estimateRowHeight([siteNotesText], 70, 34) });
+
+  // Ownership / Intellectual Property Footer Row
+  const sigRowIdx = ws2Rows.length;
+  const signatureStyle: CellStyle = {
+    font: { name: FONT_NAME, sz: 9, bold: true, color: { rgb: '64748B' } },
+    fill: { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true, readingOrder: 2 },
+    border: THIN_BORDER,
+  };
+  ws2Rows.push(
+    Array.from({ length: ws2TotalCols }, (_, i) =>
+      strCell(i === 0 ? `حقوق الملكية والبرمجة: ${cleanSignature}` : '', signatureStyle)
+    )
+  );
+  ws2Merges.push({ s: { r: sigRowIdx, c: 0 }, e: { r: sigRowIdx, c: ws2TotalCols - 1 } });
+  ws2RowHeights.push({ hpt: 24 });
 
   const ws2 = XLSX.utils.aoa_to_sheet(ws2Rows);
   ws2['!views'] = [{ rightToLeft: true, state: 'frozen', xSplit: 3, ySplit: 4 }];
