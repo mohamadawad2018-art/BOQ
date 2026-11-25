@@ -14,7 +14,10 @@ import {
   getDoc,
   getDocFromServer,
   getFirestore,
+  initializeFirestore,
   onSnapshot,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   query,
   serverTimestamp,
   setDoc,
@@ -34,7 +37,25 @@ import {
 } from '../utils/passcodeCrypto';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+function createFirestoreDb() {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      },
+      firebaseConfig.firestoreDatabaseId
+    );
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+}
+
+export const db = createFirestoreDb();
 export const auth = getAuth(app);
 
 export const OWNER_EMAIL = 'mohamad.awad.2018@gmail.com';
@@ -331,8 +352,16 @@ export function subscribeToAccessControl(
         return;
       }
       const data = snapshot.data();
-      const hasPasscodeFields =
-        typeof data.passcodeSalt === 'string' && typeof data.passcodeHash === 'string';
+      const version =
+        typeof data.passcodeVersion === 'number' && data.passcodeVersion >= 1
+          ? Math.floor(data.passcodeVersion)
+          : 1;
+      const rawSalt = typeof data.passcodeSalt === 'string' ? data.passcodeSalt : '';
+      const rawHash = typeof data.passcodeHash === 'string' ? data.passcodeHash : '';
+      // If Firestore still has a legacy v1 doc created before passcode lock was enabled, enforce initial 0000 lock
+      const isLegacyUnconfigured =
+        version === 1 && !rawHash && data.passcodeEnabled !== true;
+
       const next: AppAccessState = {
         isActive: typeof data.isActive === 'boolean' ? data.isActive : true,
         pauseMessage:
@@ -345,14 +374,20 @@ export function subscribeToAccessControl(
           data.ownerSignature.trim() !== LEGACY_OWNER_SIGNATURE
             ? data.ownerSignature
             : DEFAULT_OWNER_SIGNATURE,
-        passcodeEnabled:
-          typeof data.passcodeEnabled === 'boolean' ? data.passcodeEnabled : true,
-        passcodeSalt: hasPasscodeFields ? data.passcodeSalt : INITIAL_PASSCODE_SALT,
-        passcodeHash: hasPasscodeFields ? data.passcodeHash : INITIAL_PASSCODE_HASH,
-        passcodeVersion:
-          typeof data.passcodeVersion === 'number' && data.passcodeVersion >= 1
-            ? Math.floor(data.passcodeVersion)
-            : 1,
+        passcodeEnabled: isLegacyUnconfigured
+          ? true
+          : typeof data.passcodeEnabled === 'boolean'
+          ? data.passcodeEnabled
+          : true,
+        passcodeSalt:
+          isLegacyUnconfigured || typeof data.passcodeSalt !== 'string'
+            ? INITIAL_PASSCODE_SALT
+            : rawSalt,
+        passcodeHash:
+          isLegacyUnconfigured || typeof data.passcodeHash !== 'string'
+            ? INITIAL_PASSCODE_HASH
+            : rawHash,
+        passcodeVersion: version,
         synced: true,
       };
       saveCachedAccessState(next);
@@ -401,7 +436,7 @@ export async function saveAccessControlPolicy(
     passcodeSalt = generateRandomHex(16);
     passcodeHash = await hashPasscodePBKDF2(clean, passcodeSalt);
     passcodeVersion += 1;
-  } else if (patch.bumpVersion) {
+  } else if (patch.bumpVersion || patch.passcodeEnabled !== undefined) {
     passcodeVersion += 1;
   }
 

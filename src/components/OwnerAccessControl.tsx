@@ -433,6 +433,16 @@ export const OwnerControlBar: React.FC<OwnerControlBarProps> = ({
               >
                 {accessState.passcodeEnabled ? 'القفل مفعّل' : 'بدون قفل'}
               </span>
+              <span className="text-slate-600" aria-hidden="true">
+                ·
+              </span>
+              <span
+                className={`text-[11px] font-medium ${
+                  accessState.synced ? 'text-emerald-400/90' : 'text-slate-400'
+                }`}
+              >
+                {accessState.synced ? 'متزامن مع السحابة' : 'جارٍ الاتصال بالسحابة...'}
+              </span>
             </div>
             <p className="text-[11px] text-slate-400 truncate">
               <strong className="font-num text-emerald-400">{onlineDevicesCount}</strong> متصل الآن
