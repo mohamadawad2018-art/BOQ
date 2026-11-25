@@ -23,6 +23,7 @@ import { ConfirmModal } from './components/NumericInput';
 import {
   AppPasscodeGate,
   AppPausedScreen,
+  DeviceBlockedScreen,
   OwnerControlBar,
   OwnerLoginModal,
 } from './components/OwnerAccessControl';
@@ -35,7 +36,9 @@ import { exportProjectToExcel } from './services/excelExportService';
 import {
   type AppAccessState,
   loadCachedAccessState,
+  loadCachedDeviceBlocked,
   type PasscodeVerificationResult,
+  registerAndWatchCurrentDevice,
   subscribeToAccessControl,
   subscribeToOwnerAuth,
   subscribeToPersonalPassStatus,
@@ -66,6 +69,7 @@ export default function App() {
   const [isOwner, setIsOwner] = useState(false);
   const [ownerLoginOpen, setOwnerLoginOpen] = useState(false);
   const [accessState, setAccessState] = useState<AppAccessState>(() => loadCachedAccessState());
+  const [isDeviceBlocked, setIsDeviceBlocked] = useState<boolean>(() => loadCachedDeviceBlocked());
   // In-memory only: every fresh open (online OR offline) requires passcode when enabled
   const [unlockedSession, setUnlockedSession] = useState<{
     mode: 'global' | 'personal';
@@ -91,13 +95,19 @@ export default function App() {
     storageService.save(workspace);
   }, [workspace]);
 
-  // Subscribe to Firebase owner auth and global remote access control
+  // Subscribe to Firebase owner auth, global remote access control, and current device presence/block status
   useEffect(() => {
     const unsubAuth = subscribeToOwnerAuth((_user, ownerFlag) => {
       setIsOwner(ownerFlag);
     });
     const unsubAccess = subscribeToAccessControl((nextState) => {
       setAccessState(nextState);
+    });
+    const unsubDevice = registerAndWatchCurrentDevice((blocked) => {
+      setIsDeviceBlocked(blocked);
+      if (blocked) {
+        setUnlockedSession(null);
+      }
     });
 
     // Optional secret URL query (?owner=1) for quick activation on owner's device
@@ -108,6 +118,7 @@ export default function App() {
     return () => {
       unsubAuth();
       unsubAccess();
+      unsubDevice();
     };
   }, []);
 
@@ -695,6 +706,23 @@ export default function App() {
     });
   };
 
+  // Enforce per-device permanent block (works real-time online AND cached offline)
+  if (isDeviceBlocked && !isOwner) {
+    return (
+      <>
+        <DeviceBlockedScreen
+          ownerSignature={accessState.ownerSignature}
+          onOpenOwnerLogin={() => setOwnerLoginOpen(true)}
+        />
+        <OwnerLoginModal
+          open={ownerLoginOpen}
+          onClose={() => setOwnerLoginOpen(false)}
+          onSuccess={() => showToast('تم تفعيل لوحة تحكم المالك على جهازك')}
+        />
+      </>
+    );
+  }
+
   // Enforce real-time remote pause for all non-owner users holding the shared link
   if (!accessState.isActive && !isOwner) {
     return (
@@ -737,16 +765,21 @@ export default function App() {
       {/* 3-Zone Top Bar Contract */}
       <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#0b0f19]/92 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 sm:gap-8 px-4 sm:px-6">
-          {/* Zone 1: Single-element wordmark (5 rapid taps reveals hidden Owner Gate) */}
+          {/* Zone 1: Brand + permanent ownership attribution across all main screens (5 rapid taps reveals hidden Owner Gate) */}
           <button
             type="button"
             onClick={() => {
               setActiveTab('survey');
               handleSecretOwnerTap();
             }}
-            className="text-base sm:text-lg font-bold tracking-tight text-slate-100 whitespace-nowrap shrink-0 select-none"
+            className="text-right select-none min-w-0"
           >
-            حصر الكميات
+            <div className="text-sm sm:text-base font-bold tracking-tight text-slate-100 leading-tight truncate">
+              حصر الكميات
+            </div>
+            <div className="text-[10px] font-medium text-cyan-400/90 leading-tight truncate max-w-[180px] sm:max-w-[260px]">
+              {accessState.ownerSignature}
+            </div>
           </button>
 
           {/* Zone 2: 5 concise single-line navigation links */}

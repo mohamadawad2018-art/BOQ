@@ -15,6 +15,10 @@ service cloud.firestore {
       return id is string && id.size() == 32 && id.matches('^[a-f0-9]+$');
     }
 
+    function isValidDeviceId(id) {
+      return id is string && id.size() == 20 && id.matches('^dev_[a-f0-9]{16}$');
+    }
+
     function isValidOptionalDate(val) {
       return val is string && val.size() <= 10 && val.matches('^(|[0-9]{4}-[0-9]{2}-[0-9]{2})$');
     }
@@ -159,6 +163,38 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidDeviceSession(data) {
+      return data.keys().hasAll([
+          'deviceName',
+          'platform',
+          'customLabel',
+          'isBlocked',
+          'isOnline',
+          'createdAt',
+          'lastSeenAt'
+        ])
+        && data.keys().hasOnly([
+          'deviceName',
+          'platform',
+          'customLabel',
+          'isBlocked',
+          'isOnline',
+          'createdAt',
+          'lastSeenAt'
+        ])
+        && data.deviceName is string
+        && data.deviceName.size() >= 1
+        && data.deviceName.size() <= 64
+        && data.platform is string
+        && data.platform in ['mobile', 'tablet', 'desktop']
+        && data.customLabel is string
+        && data.customLabel.size() <= 60
+        && data.isBlocked is bool
+        && data.isOnline is bool
+        && data.createdAt is timestamp
+        && data.lastSeenAt is timestamp;
+    }
+
     // 1. Single-document global access control (/app_config/access_control)
     match /app_config/{docId} {
       allow get: if isValidId(docId) && docId == 'access_control';
@@ -248,6 +284,49 @@ service cloud.firestore {
 
       allow delete: if isOwnerAdmin()
         && isValidPassLookupId(passLookupId);
+    }
+
+    // 4. Connected devices presence & owner-controlled per-device blocklist (/devices/{deviceId})
+    match /devices/{deviceId} {
+      // Single-doc get by exact random dev_<16hex> ID (for self-block check) or owner
+      allow get: if isValidDeviceId(deviceId);
+      // Only verified owner can list all connected devices
+      allow list: if isOwnerAdmin() && resource.data.deviceName is string;
+
+      // Initial device registration: strictly unblocked, empty label, server timestamps
+      allow create: if isValidDeviceId(deviceId)
+        && isValidDeviceSession(incoming())
+        && incoming().isBlocked == false
+        && incoming().customLabel == ''
+        && incoming().createdAt == request.time
+        && incoming().lastSeenAt == request.time;
+
+      // Tiered updates: Owner moderation vs unblocked device heartbeat (terminal lock when blocked)
+      allow update: if isValidDeviceId(deviceId)
+        && isValidDeviceSession(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().lastSeenAt == request.time
+        && (
+          (isOwnerAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'isBlocked',
+              'customLabel',
+              'isOnline',
+              'lastSeenAt'
+            ]))
+          ||
+          (existing().isBlocked == false
+            && incoming().isBlocked == false
+            && incoming().customLabel == existing().customLabel
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'deviceName',
+              'platform',
+              'isOnline',
+              'lastSeenAt'
+            ]))
+        );
+
+      allow delete: if isOwnerAdmin() && isValidDeviceId(deviceId);
     }
   }
 }

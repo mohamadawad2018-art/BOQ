@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocFromServer,
@@ -17,6 +18,8 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  type Timestamp,
+  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -38,10 +41,18 @@ export const OWNER_EMAIL = 'mohamad.awad.2018@gmail.com';
 export const MAX_PAUSE_MESSAGE_LENGTH = 300;
 export const MAX_SIGNATURE_LENGTH = 120;
 export const MAX_KEY_LABEL_LENGTH = 80;
+export const MAX_DEVICE_LABEL_LENGTH = 60;
 
-const ACCESS_CACHE_KEY = 'boq_remote_access_cache_v2';
+const ACCESS_CACHE_KEY = 'boq_remote_access_cache_v3';
 const PERSONAL_PASS_CACHE_KEY = 'boq_personal_pass_cache_v1';
+const DEVICE_ID_STORAGE_KEY = 'boq_device_id_v1';
+const DEVICE_BLOCKED_CACHE_KEY = 'boq_device_blocked_v1';
 const ACCESS_DOC_PATH = 'app_config/access_control';
+
+// Pre-derived PBKDF2-SHA256 (100k iterations) initial passcode hash & salt (never plaintext)
+const INITIAL_PASSCODE_SALT = 'e3cb1fb0de687c8fccb7c90ba7b0d64a';
+const INITIAL_PASSCODE_HASH =
+  'be8b90e4615dda92d640e29f17b5ee3ed304a5664375a56642b930603f37b6ef';
 
 export const DEFAULT_OWNER_SIGNATURE = '© م. محمد عواد — جميع الحقوق محفوظة';
 const LEGACY_OWNER_SIGNATURE = '© م. محمد عوض — جميع الحقوق محفوظة';
@@ -133,6 +144,18 @@ export interface OwnerAccessKeyRecord {
   version: number;
 }
 
+export interface DeviceSessionRecord {
+  id: string;
+  deviceName: string;
+  platform: 'mobile' | 'tablet' | 'desktop';
+  customLabel: string;
+  isBlocked: boolean;
+  isOnline: boolean;
+  createdMs: number;
+  lastSeenMs: number;
+  isCurrentlyConnected: boolean;
+}
+
 interface CachedPersonalPass {
   passLookupId: string;
   verifySalt: string;
@@ -155,9 +178,9 @@ function defaultAccessState(): AppAccessState {
     isActive: true,
     pauseMessage: DEFAULT_PAUSE_MESSAGE,
     ownerSignature: DEFAULT_OWNER_SIGNATURE,
-    passcodeEnabled: false,
-    passcodeSalt: '',
-    passcodeHash: '',
+    passcodeEnabled: true,
+    passcodeSalt: INITIAL_PASSCODE_SALT,
+    passcodeHash: INITIAL_PASSCODE_HASH,
     passcodeVersion: 1,
     synced: false,
   };
@@ -168,6 +191,8 @@ export function loadCachedAccessState(): AppAccessState {
     const raw = window.localStorage.getItem(ACCESS_CACHE_KEY);
     if (!raw) return defaultAccessState();
     const parsed = JSON.parse(raw) as Partial<AppAccessState>;
+    const hasConfiguredPasscode =
+      typeof parsed.passcodeSalt === 'string' && typeof parsed.passcodeHash === 'string';
     return {
       isActive: typeof parsed.isActive === 'boolean' ? parsed.isActive : true,
       pauseMessage:
@@ -180,9 +205,10 @@ export function loadCachedAccessState(): AppAccessState {
         parsed.ownerSignature.trim() !== LEGACY_OWNER_SIGNATURE
           ? parsed.ownerSignature
           : DEFAULT_OWNER_SIGNATURE,
-      passcodeEnabled: typeof parsed.passcodeEnabled === 'boolean' ? parsed.passcodeEnabled : false,
-      passcodeSalt: typeof parsed.passcodeSalt === 'string' ? parsed.passcodeSalt : '',
-      passcodeHash: typeof parsed.passcodeHash === 'string' ? parsed.passcodeHash : '',
+      passcodeEnabled:
+        typeof parsed.passcodeEnabled === 'boolean' ? parsed.passcodeEnabled : true,
+      passcodeSalt: hasConfiguredPasscode ? (parsed.passcodeSalt as string) : INITIAL_PASSCODE_SALT,
+      passcodeHash: hasConfiguredPasscode ? (parsed.passcodeHash as string) : INITIAL_PASSCODE_HASH,
       passcodeVersion:
         typeof parsed.passcodeVersion === 'number' && parsed.passcodeVersion >= 1
           ? Math.floor(parsed.passcodeVersion)
@@ -305,6 +331,8 @@ export function subscribeToAccessControl(
         return;
       }
       const data = snapshot.data();
+      const hasPasscodeFields =
+        typeof data.passcodeSalt === 'string' && typeof data.passcodeHash === 'string';
       const next: AppAccessState = {
         isActive: typeof data.isActive === 'boolean' ? data.isActive : true,
         pauseMessage:
@@ -318,9 +346,9 @@ export function subscribeToAccessControl(
             ? data.ownerSignature
             : DEFAULT_OWNER_SIGNATURE,
         passcodeEnabled:
-          typeof data.passcodeEnabled === 'boolean' ? data.passcodeEnabled : false,
-        passcodeSalt: typeof data.passcodeSalt === 'string' ? data.passcodeSalt : '',
-        passcodeHash: typeof data.passcodeHash === 'string' ? data.passcodeHash : '',
+          typeof data.passcodeEnabled === 'boolean' ? data.passcodeEnabled : true,
+        passcodeSalt: hasPasscodeFields ? data.passcodeSalt : INITIAL_PASSCODE_SALT,
+        passcodeHash: hasPasscodeFields ? data.passcodeHash : INITIAL_PASSCODE_HASH,
         passcodeVersion:
           typeof data.passcodeVersion === 'number' && data.passcodeVersion >= 1
             ? Math.floor(data.passcodeVersion)
@@ -405,6 +433,295 @@ export async function saveAccessControlPolicy(
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, ACCESS_DOC_PATH);
+  }
+}
+
+// =========================================================================
+// CONNECTED DEVICES TRACKING & OWNER-CONTROLLED PER-DEVICE BLOCKING
+// =========================================================================
+
+export function getOrCreateLocalDeviceId(): string {
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (existing && /^dev_[a-f0-9]{16}$/.test(existing)) {
+      return existing;
+    }
+    const fresh = `dev_${generateRandomHex(8)}`;
+    window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, fresh);
+    return fresh;
+  } catch {
+    return `dev_${generateRandomHex(8)}`;
+  }
+}
+
+export function loadCachedDeviceBlocked(): boolean {
+  try {
+    return window.localStorage.getItem(DEVICE_BLOCKED_CACHE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveCachedDeviceBlocked(blocked: boolean): void {
+  try {
+    window.localStorage.setItem(DEVICE_BLOCKED_CACHE_KEY, blocked ? '1' : '0');
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function detectDeviceInfo(): { deviceName: string; platform: 'mobile' | 'tablet' | 'desktop' } {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isIPad = /iPad/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  const isTablet = isIPad || (/Android/i.test(ua) && !/Mobile/i.test(ua));
+  const isMobile = !isTablet && /Android|iPhone|iPod|Mobile/i.test(ua);
+  const platform: 'mobile' | 'tablet' | 'desktop' = isTablet
+    ? 'tablet'
+    : isMobile
+    ? 'mobile'
+    : 'desktop';
+
+  let os = 'جهاز';
+  if (/iPhone/i.test(ua)) os = 'iPhone';
+  else if (isIPad) os = 'iPad';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Mac OS X|Macintosh/i.test(ua)) os = 'Mac';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  let browser = 'Browser';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera';
+  else if (/SamsungBrowser/i.test(ua)) browser = 'Samsung';
+  else if (/CriOS|Chrome/i.test(ua)) browser = 'Chrome';
+  else if (/FxiOS|Firefox/i.test(ua)) browser = 'Firefox';
+  else if (/Safari/i.test(ua)) browser = 'Safari';
+
+  return {
+    deviceName: `${os} · ${browser}`.slice(0, 64),
+    platform,
+  };
+}
+
+export function registerAndWatchCurrentDevice(
+  onBlockStatusChange: (isBlocked: boolean) => void
+): () => void {
+  const deviceId = getOrCreateLocalDeviceId();
+  const { deviceName, platform } = detectDeviceInfo();
+  const ref = doc(db, 'devices', deviceId);
+
+  let disposed = false;
+  let knownBlocked = loadCachedDeviceBlocked();
+
+  const sendPresence = async (onlineFlag: boolean) => {
+    if (disposed || knownBlocked) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    try {
+      const snap = await getDoc(ref);
+      if (disposed) return;
+      if (!snap.exists()) {
+        if (!onlineFlag) return;
+        await setDoc(ref, {
+          deviceName,
+          platform,
+          customLabel: '',
+          isBlocked: false,
+          isOnline: true,
+          createdAt: serverTimestamp(),
+          lastSeenAt: serverTimestamp(),
+        });
+      } else {
+        const data = snap.data();
+        if (data.isBlocked === true) {
+          knownBlocked = true;
+          saveCachedDeviceBlocked(true);
+          onBlockStatusChange(true);
+          return;
+        }
+        await updateDoc(ref, {
+          deviceName,
+          platform,
+          isOnline: onlineFlag,
+          lastSeenAt: serverTimestamp(),
+        });
+      }
+    } catch {
+      // Offline or blocked by security rules — safely ignore without crashing offline BOQ work
+    }
+  };
+
+  void sendPresence(true);
+
+  const unsubSnapshot = onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) {
+        if (knownBlocked) {
+          knownBlocked = false;
+          saveCachedDeviceBlocked(false);
+          onBlockStatusChange(false);
+        }
+        return;
+      }
+      const data = snap.data();
+      const blockedNow = data.isBlocked === true;
+      knownBlocked = blockedNow;
+      saveCachedDeviceBlocked(blockedNow);
+      onBlockStatusChange(blockedNow);
+    },
+    () => {
+      // Offline — retain cached block state
+    }
+  );
+
+  const heartbeatInterval = window.setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      void sendPresence(true);
+    }
+  }, 60_000);
+
+  const handleVisibility = () => {
+    void sendPresence(document.visibilityState === 'visible');
+  };
+
+  const handlePageHide = () => {
+    void sendPresence(false);
+  };
+
+  const handleOnline = () => {
+    void sendPresence(true);
+  };
+
+  document.addEventListener('visibilitychange', handleVisibility);
+  window.addEventListener('pagehide', handlePageHide);
+  window.addEventListener('online', handleOnline);
+
+  return () => {
+    disposed = true;
+    unsubSnapshot();
+    window.clearInterval(heartbeatInterval);
+    document.removeEventListener('visibilitychange', handleVisibility);
+    window.removeEventListener('pagehide', handlePageHide);
+    window.removeEventListener('online', handleOnline);
+  };
+}
+
+function timestampToMs(ts: unknown): number {
+  if (!ts || typeof ts !== 'object') return 0;
+  const maybeTs = ts as Timestamp;
+  if (typeof maybeTs.toMillis === 'function') return maybeTs.toMillis();
+  return 0;
+}
+
+export function subscribeToConnectedDevices(
+  onUpdate: (devices: DeviceSessionRecord[]) => void
+): () => void {
+  const currentUser = auth.currentUser;
+  if (!isOwnerUser(currentUser) || !currentUser) {
+    onUpdate([]);
+    return () => {};
+  }
+
+  // Filter matches Firestore rule `resource.data.deviceName is string`
+  const q = query(collection(db, 'devices'), where('deviceName', '>=', ''));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const now = Date.now();
+      const list: DeviceSessionRecord[] = snapshot.docs.map((d) => {
+        const data = d.data();
+        const lastSeenMs = timestampToMs(data.lastSeenAt);
+        const createdMs = timestampToMs(data.createdAt);
+        const isBlocked = data.isBlocked === true;
+        const isOnline = data.isOnline === true;
+        // Consider truly live if isOnline && heartbeat within last 3 minutes
+        const isCurrentlyConnected =
+          !isBlocked && isOnline && lastSeenMs > 0 && now - lastSeenMs < 180_000;
+
+        const rawPlat = data.platform;
+        const platform: 'mobile' | 'tablet' | 'desktop' =
+          rawPlat === 'mobile' || rawPlat === 'tablet' || rawPlat === 'desktop'
+            ? rawPlat
+            : 'desktop';
+
+        return {
+          id: d.id,
+          deviceName: typeof data.deviceName === 'string' ? data.deviceName : 'جهاز غير معروف',
+          platform,
+          customLabel: typeof data.customLabel === 'string' ? data.customLabel : '',
+          isBlocked,
+          isOnline,
+          createdMs,
+          lastSeenMs,
+          isCurrentlyConnected,
+        };
+      });
+
+      list.sort((a, b) => {
+        if (a.isCurrentlyConnected !== b.isCurrentlyConnected) {
+          return a.isCurrentlyConnected ? -1 : 1;
+        }
+        return b.lastSeenMs - a.lastSeenMs;
+      });
+      onUpdate(list);
+    },
+    (error) => {
+      if (error.code === 'permission-denied') {
+        handleFirestoreError(error, OperationType.LIST, 'devices');
+      } else {
+        console.warn('Devices listener offline:', error.message);
+      }
+    }
+  );
+}
+
+export async function setDeviceBlockedStatus(
+  device: DeviceSessionRecord,
+  nextBlocked: boolean
+): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!isOwnerUser(currentUser) || !currentUser) {
+    throw new Error('غير مصرح — يتطلب تسجيل دخول المالك.');
+  }
+
+  try {
+    await updateDoc(doc(db, 'devices', device.id), {
+      isBlocked: Boolean(nextBlocked),
+      isOnline: nextBlocked ? false : device.isOnline,
+      lastSeenAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `devices/${device.id}`);
+  }
+}
+
+export async function renameDeviceLabel(deviceId: string, customLabel: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!isOwnerUser(currentUser) || !currentUser) {
+    throw new Error('غير مصرح — يتطلب تسجيل دخول المالك.');
+  }
+
+  try {
+    await updateDoc(doc(db, 'devices', deviceId), {
+      customLabel: customLabel.trim().slice(0, MAX_DEVICE_LABEL_LENGTH),
+      lastSeenAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `devices/${deviceId}`);
+  }
+}
+
+export async function deleteDeviceRecord(deviceId: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!isOwnerUser(currentUser) || !currentUser) {
+    throw new Error('غير مصرح — يتطلب تسجيل دخول المالك.');
+  }
+
+  try {
+    await deleteDoc(doc(db, 'devices', deviceId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `devices/${deviceId}`);
   }
 }
 

@@ -178,20 +178,74 @@
         "updatedBy",
         "updatedAt"
       ]
+    },
+    "DeviceSession": {
+      "title": "DeviceSession",
+      "description": "Non-PII connected device registry entry allowing the verified owner to monitor active devices and permanently block/unblock specific devices.",
+      "type": "object",
+      "properties": {
+        "deviceName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Non-PII browser/OS summary such as 'Android · Chrome'."
+        },
+        "platform": {
+          "type": "string",
+          "enum": ["mobile", "tablet", "desktop"],
+          "description": "Device form factor category."
+        },
+        "customLabel": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Optional owner-assigned tag for identifying the device."
+        },
+        "isBlocked": {
+          "type": "boolean",
+          "description": "Owner-controlled block flag. Once true, the device cannot self-update or enter the app (enforced online and offline)."
+        },
+        "isOnline": {
+          "type": "boolean",
+          "description": "Whether the device currently has the app open and active."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp of first device connection."
+        },
+        "lastSeenAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last device heartbeat or owner moderation action."
+        }
+      },
+      "required": [
+        "deviceName",
+        "platform",
+        "customLabel",
+        "isBlocked",
+        "isOnline",
+        "createdAt",
+        "lastSeenAt"
+      ]
     }
   },
   "firestore": {
     "/app_config/{docId}": {
       "schema": { "$ref": "#/entities/AccessControl" },
-      "description": "Single-document global access control, copyright attribution, and hashed master passcode (/app_config/access_control). Public get for real-time & offline cache sync; strictly owner-only create/update."
+      "description": "Single-document global access control, copyright attribution, and hashed master passcode (/app_config/access_control)."
     },
     "/owner_access_keys/{keyId}": {
       "schema": { "$ref": "#/entities/OwnerAccessKey" },
-      "description": "Owner-only private registry of named per-user access keys. Completely isolated from public reads."
+      "description": "Owner-only private registry of named per-user access keys."
     },
     "/access_passes/{passLookupId}": {
       "schema": { "$ref": "#/entities/AccessPass" },
-      "description": "Blind-lookup salted verification record keyed by SHA-256(code). Single-doc get only (list strictly forbidden); owner-only write/delete."
+      "description": "Blind-lookup salted verification record keyed by SHA-256(code)."
+    },
+    "/devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/DeviceSession" },
+      "description": "Connected device presence and owner-only blocklist. Devices can only get/heartbeat their own random dev_<16hex> doc while unblocked; only the verified owner can list, block/unblock, label, or delete devices."
     }
   }
 }
